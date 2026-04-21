@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_KEY = process.env.IMAGE_API_KEY!;
-const API_ENDPOINT = process.env.IMAGE_API_ENDPOINT!;
-const MODEL = process.env.IMAGE_MODEL!;
+const API_KEY = process.env.IMAGE_API_KEY!.trim();
+const API_ENDPOINT = process.env.IMAGE_API_ENDPOINT!.trim();
+const MODEL = process.env.IMAGE_MODEL!.trim();
 
 export async function POST(req: NextRequest) {
   try {
