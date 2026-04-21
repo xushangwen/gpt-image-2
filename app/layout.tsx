@@ -17,6 +17,7 @@ const notoSansSC = Noto_Sans_SC({
 export const metadata: Metadata = {
   title: "ImageGen — AI 图像生成",
   description: "由 GPT-Image-2 驱动的 AI 图像生成工具",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({
