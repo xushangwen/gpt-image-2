@@ -21,6 +21,14 @@ const QUALITY_OPTIONS: { label: string; value: Quality }[] = [
 
 const COUNT_OPTIONS = [1, 2, 4];
 
+// aspectRatio → CSS aspect-ratio 值，用于固定预览卡片比例
+const CARD_ASPECT: Record<AspectRatio, string> = {
+  auto: "1 / 1",
+  "1:1": "1 / 1",
+  "3:2": "3 / 2",
+  "2:3": "2 / 3",
+};
+
 function imageSrc(img: ImageResult) {
   return img.b64 ? `data:${img.mediaType};base64,${img.b64}` : img.url!;
 }
@@ -33,15 +41,19 @@ function downloadImage(img: ImageResult, index: number) {
     canvas.width = el.naturalWidth;
     canvas.height = el.naturalHeight;
     canvas.getContext("2d")!.drawImage(el, 0, 0);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `imagegen-${Date.now()}-${index + 1}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }, "image/jpeg", 0.95);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `imagegen-${Date.now()}-${index + 1}.jpg`;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+      "image/jpeg",
+      0.95
+    );
   };
   el.crossOrigin = "anonymous";
   el.src = src;
@@ -57,12 +69,22 @@ export default function HomePage() {
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
+  const [lightbox, setLightbox] = useState<{ img: ImageResult; index: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 同步主题到 html 标签
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   }, [dark]);
+
+  // ESC 关闭 lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [lightbox]);
 
   const selectedAspect = ASPECT_OPTIONS.find((o) => o.value === aspect)!;
 
@@ -93,11 +115,17 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
       setLoading(false);
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
   }, [prompt, loading, selectedAspect.size, quality, count]);
 
-  const clearImages = () => { setImages([]); setError(null); };
+  const clearImages = () => {
+    setImages([]);
+    setError(null);
+  };
 
   const btnBase: React.CSSProperties = { borderColor: "var(--border)", color: "var(--text-secondary)" };
   const btnHover = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -112,26 +140,41 @@ export default function HomePage() {
   return (
     <div className="min-h-full flex flex-col" style={{ background: "var(--bg)" }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-        {/* 左：logo + 名称 */}
+      <header
+        className="flex items-center justify-between px-6 py-4 border-b"
+        style={{ borderColor: "var(--border)" }}
+      >
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--accent)" }}>
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: "var(--accent)" }}
+          >
             <i className="ri-image-ai-line text-sm text-white" />
           </div>
-          <span className="text-base font-semibold tracking-tight" style={{ color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
+          <span
+            className="text-base font-semibold tracking-tight"
+            style={{ color: "var(--text-primary)", fontFamily: "var(--font-space)" }}
+          >
             ImageGen
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full border" style={{
-            color: "var(--accent)", borderColor: "var(--accent-dim)", background: "var(--accent-dim)", fontFamily: "var(--font-space)",
-          }}>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full border"
+            style={{
+              color: "var(--accent)",
+              borderColor: "var(--accent-dim)",
+              background: "var(--accent-dim)",
+              fontFamily: "var(--font-space)",
+            }}
+          >
             GPT-Image-2
           </span>
         </div>
 
-        {/* 右：署名 + 主题切换 */}
         <div className="flex items-center gap-4">
-          <span className="text-xs tracking-widest uppercase" style={{ color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+          <span
+            className="text-xs tracking-widest uppercase"
+            style={{ color: "var(--text-muted)", fontFamily: "var(--font-space)" }}
+          >
             QY.Studio
           </span>
           <button
@@ -149,19 +192,25 @@ export default function HomePage() {
 
       <main className="flex flex-1 overflow-hidden">
         {/* 左栏：控制面板 */}
-        <aside className="w-72 flex-shrink-0 flex flex-col border-r overflow-y-auto"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <aside
+          className="w-72 flex-shrink-0 flex flex-col border-r overflow-y-auto"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+        >
           <div className="flex-1 p-5 flex flex-col gap-5">
-
             {/* 提示词 */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium tracking-wider uppercase" style={{ color: "var(--text-secondary)" }}>
+              <label
+                className="text-xs font-medium tracking-wider uppercase"
+                style={{ color: "var(--text-secondary)" }}
+              >
                 提示词
               </label>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate();
+                }}
                 placeholder="描述你想生成的图像..."
                 rows={6}
                 className="w-full resize-none rounded-lg px-3 py-3 text-sm outline-none transition-all"
@@ -178,19 +227,27 @@ export default function HomePage() {
 
             {/* 尺寸 */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium tracking-wider uppercase" style={{ color: "var(--text-secondary)" }}>
+              <label
+                className="text-xs font-medium tracking-wider uppercase"
+                style={{ color: "var(--text-secondary)" }}
+              >
                 尺寸
               </label>
               <div className="grid grid-cols-4 gap-1.5">
                 {ASPECT_OPTIONS.map((opt) => (
-                  <button key={opt.value}
-                    onClick={() => { setAspect(opt.value); clearImages(); }}
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setAspect(opt.value);
+                      clearImages();
+                    }}
                     className="flex flex-col items-center gap-1.5 py-2.5 rounded-lg border text-xs transition-all"
                     style={{
                       background: aspect === opt.value ? "var(--accent-dim)" : "var(--surface-2)",
                       borderColor: aspect === opt.value ? "var(--accent)" : "var(--border)",
                       color: aspect === opt.value ? "var(--accent)" : "var(--text-secondary)",
-                    }}>
+                    }}
+                  >
                     <i className={`${opt.icon} text-sm`} />
                     {opt.label}
                   </button>
@@ -200,19 +257,24 @@ export default function HomePage() {
 
             {/* 质量 */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium tracking-wider uppercase" style={{ color: "var(--text-secondary)" }}>
+              <label
+                className="text-xs font-medium tracking-wider uppercase"
+                style={{ color: "var(--text-secondary)" }}
+              >
                 质量
               </label>
               <div className="flex gap-1.5">
                 {QUALITY_OPTIONS.map((opt) => (
-                  <button key={opt.value}
+                  <button
+                    key={opt.value}
                     onClick={() => setQuality(opt.value)}
                     className="flex-1 py-2 rounded-lg border text-xs transition-all"
                     style={{
                       background: quality === opt.value ? "var(--accent-dim)" : "var(--surface-2)",
                       borderColor: quality === opt.value ? "var(--accent)" : "var(--border)",
                       color: quality === opt.value ? "var(--accent)" : "var(--text-secondary)",
-                    }}>
+                    }}
+                  >
                     {opt.label}
                   </button>
                 ))}
@@ -221,25 +283,29 @@ export default function HomePage() {
 
             {/* 张数 */}
             <div className="flex flex-col gap-2">
-              <label className="text-xs font-medium tracking-wider uppercase" style={{ color: "var(--text-secondary)" }}>
+              <label
+                className="text-xs font-medium tracking-wider uppercase"
+                style={{ color: "var(--text-secondary)" }}
+              >
                 张数
               </label>
               <div className="flex gap-1.5">
                 {COUNT_OPTIONS.map((n) => (
-                  <button key={n}
+                  <button
+                    key={n}
                     onClick={() => setCount(n)}
                     className="flex-1 py-2 rounded-lg border text-xs transition-all"
                     style={{
                       background: count === n ? "var(--accent-dim)" : "var(--surface-2)",
                       borderColor: count === n ? "var(--accent)" : "var(--border)",
                       color: count === n ? "var(--accent)" : "var(--text-secondary)",
-                    }}>
+                    }}
+                  >
                     {n} 张
                   </button>
                 ))}
               </div>
             </div>
-
           </div>
 
           {/* 生成按钮 */}
@@ -252,7 +318,8 @@ export default function HomePage() {
                 background: !prompt.trim() || loading ? "var(--surface-2)" : "var(--accent)",
                 color: !prompt.trim() || loading ? "var(--text-muted)" : "#fff",
                 cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
-              }}>
+              }}
+            >
               {loading ? (
                 <>
                   <i className="ri-loader-4-line animate-spin" />
@@ -271,19 +338,25 @@ export default function HomePage() {
 
         {/* 右栏：预览区 */}
         <section className="flex-1 flex flex-col items-center justify-center p-8 overflow-auto gap-6">
-
           {/* 加载状态 */}
           {loading && (
             <div className="flex flex-col items-center gap-3">
-              <div className="w-11 h-11 rounded-full border-2 animate-spin"
-                style={{ borderColor: "var(--border)", borderTopColor: "var(--accent)" }} />
+              <div
+                className="w-11 h-11 rounded-full border-2 animate-spin"
+                style={{ borderColor: "var(--border)", borderTopColor: "var(--accent)" }}
+              />
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
                 正在生成{elapsed !== null ? ` · ${elapsed}s` : ""}
               </p>
-              {/* 超过 60s 提示 */}
               {elapsed !== null && elapsed >= 60 && (
-                <div className="flex items-center gap-2 px-4 py-2 rounded-lg border text-xs"
-                  style={{ borderColor: "rgba(255,180,0,0.3)", background: "rgba(255,180,0,0.06)", color: "#ffb400" }}>
+                <div
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-xs"
+                  style={{
+                    borderColor: "rgba(255,180,0,0.3)",
+                    background: "rgba(255,180,0,0.06)",
+                    color: "#ffb400",
+                  }}
+                >
                   <i className="ri-time-line" />
                   已超过 60s，生成可能出现问题，完成后可尝试重新生成
                 </div>
@@ -293,13 +366,21 @@ export default function HomePage() {
 
           {/* 错误状态 */}
           {error && !loading && (
-            <div className="flex flex-col items-center gap-3 max-w-sm text-center p-6 rounded-xl border"
-              style={{ background: "var(--surface)", borderColor: "rgba(255,80,80,0.15)" }}>
+            <div
+              className="flex flex-col items-center gap-3 max-w-sm text-center p-6 rounded-xl border"
+              style={{ background: "var(--surface)", borderColor: "rgba(255,80,80,0.15)" }}
+            >
               <i className="ri-error-warning-line text-2xl" style={{ color: "#ff6060" }} />
-              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{error}</p>
-              <button onClick={handleGenerate}
+              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+                {error}
+              </p>
+              <button
+                onClick={handleGenerate}
                 className="text-xs px-4 py-2 rounded-lg border transition-all"
-                style={btnBase} onMouseEnter={btnHover} onMouseLeave={btnLeave}>
+                style={btnBase}
+                onMouseEnter={btnHover}
+                onMouseLeave={btnLeave}
+              >
                 重试
               </button>
             </div>
@@ -308,21 +389,69 @@ export default function HomePage() {
           {/* 图片结果 */}
           {images.length > 0 && !loading && (
             <>
-              <div className={`w-full max-w-4xl grid gap-4 ${images.length === 1 ? "grid-cols-1 max-w-2xl" : images.length === 2 ? "grid-cols-2" : "grid-cols-2"}`}>
+              <div
+                className={`w-full grid gap-4 ${images.length > 1 ? "grid-cols-2 max-w-3xl" : "grid-cols-1 max-w-xl"}`}
+              >
                 {images.map((img, i) => (
-                  <div key={i} className="group relative rounded-xl overflow-hidden border"
-                    style={{ borderColor: "var(--border)" }}>
+                  <div
+                    key={i}
+                    className="group relative rounded-xl overflow-hidden border cursor-zoom-in"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                      aspectRatio: CARD_ASPECT[aspect],
+                    }}
+                    onClick={() => setLightbox({ img, index: i })}
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={imageSrc(img)} alt={`${prompt} ${i + 1}`}
-                      style={{ display: "block", width: "100%", height: "auto" }} />
-                    {/* hover 下载按钮 */}
-                    <button
-                      onClick={() => downloadImage(img, i)}
-                      className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: "rgba(0,0,0,0.6)", color: "#fff", backdropFilter: "blur(6px)" }}>
-                      <i className="ri-download-2-line" />
-                      下载
-                    </button>
+                    <img
+                      src={imageSrc(img)}
+                      alt={`${prompt} ${i + 1}`}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        display: "block",
+                      }}
+                    />
+                    {/* hover 操作层 */}
+                    <div
+                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end gap-2 p-3"
+                      style={{
+                        background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 55%)",
+                      }}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadImage(img, i);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                        style={{
+                          background: "rgba(0,0,0,0.6)",
+                          color: "#fff",
+                          backdropFilter: "blur(6px)",
+                        }}
+                      >
+                        <i className="ri-download-2-line" />
+                        下载
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setLightbox({ img, index: i });
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                        style={{
+                          background: "rgba(0,0,0,0.6)",
+                          color: "#fff",
+                          backdropFilter: "blur(6px)",
+                        }}
+                      >
+                        <i className="ri-zoom-in-line" />
+                        放大
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -330,16 +459,24 @@ export default function HomePage() {
               {/* 操作栏 */}
               <div className="flex items-center gap-3">
                 {images.length === 1 && (
-                  <button onClick={() => downloadImage(images[0], 0)}
+                  <button
+                    onClick={() => downloadImage(images[0], 0)}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all"
-                    style={btnBase} onMouseEnter={btnHover} onMouseLeave={btnLeave}>
+                    style={btnBase}
+                    onMouseEnter={btnHover}
+                    onMouseLeave={btnLeave}
+                  >
                     <i className="ri-download-2-line" />
                     下载 JPEG
                   </button>
                 )}
-                <button onClick={handleGenerate}
+                <button
+                  onClick={handleGenerate}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all"
-                  style={btnBase} onMouseEnter={btnHover} onMouseLeave={btnLeave}>
+                  style={btnBase}
+                  onMouseEnter={btnHover}
+                  onMouseLeave={btnLeave}
+                >
                   <i className="ri-refresh-line" />
                   重新生成
                 </button>
@@ -350,8 +487,10 @@ export default function HomePage() {
           {/* 空状态 */}
           {images.length === 0 && !loading && !error && (
             <div className="flex flex-col items-center gap-3 select-none">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                style={{ background: "var(--surface-2)" }}>
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                style={{ background: "var(--surface-2)" }}
+              >
                 <i className="ri-image-ai-line text-2xl" style={{ color: "var(--text-muted)" }} />
               </div>
               <p className="text-sm" style={{ color: "var(--text-muted)" }}>
@@ -359,9 +498,61 @@ export default function HomePage() {
               </p>
             </div>
           )}
-
         </section>
       </main>
+
+      {/* Lightbox 大图预览 */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-6"
+          style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(10px)" }}
+          onClick={() => setLightbox(null)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageSrc(lightbox.img)}
+            alt="大图预览"
+            style={{
+              maxWidth: "90vw",
+              maxHeight: "90vh",
+              objectFit: "contain",
+              borderRadius: "12px",
+              boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {/* 右上角操作按钮 */}
+          <div className="absolute top-5 right-5 flex gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadImage(lightbox.img, lightbox.index);
+              }}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-all"
+              style={{
+                background: "rgba(255,255,255,0.12)",
+                color: "#fff",
+                backdropFilter: "blur(6px)",
+              }}
+              title="下载"
+            >
+              <i className="ri-download-2-line" />
+            </button>
+            <button
+              onClick={() => setLightbox(null)}
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-all"
+              style={{
+                background: "rgba(255,255,255,0.12)",
+                color: "#fff",
+                backdropFilter: "blur(6px)",
+              }}
+              title="关闭 (ESC)"
+            >
+              <i className="ri-close-line" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
