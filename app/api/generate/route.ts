@@ -8,6 +8,7 @@ type ReferenceImageInput = {
   name?: string;
 };
 
+const EXPECTED_API_HOST = "api.bltcy.ai";
 const ALLOWED_SIZES = new Set(["auto", "1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
@@ -31,21 +32,32 @@ function getConfig(): GenerateConfig {
     throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
   }
 
-  let editEndpoint = configuredEditEndpoint;
+  let endpointUrl: URL;
   try {
-    const endpointUrl = new URL(apiEndpoint);
-    editEndpoint ??= endpointUrl.href.replace(/\/images\/generations\/?$/, "/images/edits");
+    endpointUrl = new URL(apiEndpoint);
   } catch {
     throw new HttpError("服务端图像生成接口地址配置无效", 500);
   }
 
+  if (endpointUrl.hostname !== EXPECTED_API_HOST) {
+    throw new HttpError(`服务端图像接口配置错误：当前指向 ${endpointUrl.hostname}，应为 ${EXPECTED_API_HOST}`, 500);
+  }
+
+  if (!endpointUrl.pathname.endsWith("/v1/images/generations")) {
+    throw new HttpError("服务端图像生成接口应配置为 https://api.bltcy.ai/v1/images/generations", 500);
+  }
+
+  const editEndpoint = configuredEditEndpoint;
   try {
+    if (!editEndpoint) {
+      return { apiKey, apiEndpoint: endpointUrl.href, editEndpoint: "", model };
+    }
     new URL(editEndpoint);
   } catch {
     throw new HttpError("服务端图像编辑接口地址配置无效", 500);
   }
 
-  return { apiKey, apiEndpoint, editEndpoint, model };
+  return { apiKey, apiEndpoint: endpointUrl.href, editEndpoint, model };
 }
 
 function getErrorMessage(err: unknown) {
@@ -159,6 +171,10 @@ async function editOne(
   referenceImage: ReferenceImageInput,
   config: GenerateConfig
 ): Promise<ImageResult> {
+  if (!config.editEndpoint) {
+    throw new HttpError("参考图生成接口未配置，请设置 IMAGE_EDIT_ENDPOINT 后再使用参考图", 500);
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   const bytes = Buffer.from(referenceImage.data!, "base64");
