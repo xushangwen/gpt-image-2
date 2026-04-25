@@ -10,7 +10,7 @@
   --border-focus: rgba(255, 255, 255, 0.2);
   --text-primary: #efefef;
   --text-secondary: #7a7a7a;
-  --text-muted: #383838;
+  --text-muted: #565656;
   --accent: #ffffff;
   --accent-dim: rgba(255, 255, 255, 0.07);
   --accent-glow: rgba(255, 255, 255, 0.06);
@@ -31,7 +31,7 @@
   --bg: #f4f4f4;
   --surface: #ffffff;
   --surface-2: #f4f4f4;
-  --surface-3: #f4f4f4;
+  --surface-3: #ececec;
   --border: rgba(0, 0, 0, 0.06);
   --border-focus: rgba(0, 0, 0, 0.16);
   --text-primary: #111111;
@@ -63,7 +63,7 @@ html, body {
   transition: background 0.2s, color 0.2s;
 }
 
-::selection { background: var(--accent); color: #fff; }
+::selection { background: var(--accent); color: var(--btn-text); }
 
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }

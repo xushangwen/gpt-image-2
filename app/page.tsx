@@ -25,6 +25,8 @@ type HistoryEntry = {
   referenceName?: string;
   versionLabel?: string;
 };
+type ToastType = "success" | "error" | "warning";
+
 type VersionEntry = HistoryEntry & {
   images: ImageResult[];
   referenceThumbnail?: string;
@@ -255,7 +257,15 @@ export default function HomePage() {
   const [aspect, setAspect] = useState<AspectRatio>("auto");
   const [quality, setQuality] = useState<Quality>("high");
   const [count, setCount] = useState(1);
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved) return saved === "dark";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch {
+      return true;
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -268,9 +278,10 @@ export default function HomePage() {
   const [showPromptHistory, setShowPromptHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
-  const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
 
+  const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generateControllerRef = useRef<AbortController | null>(null);
@@ -287,6 +298,7 @@ export default function HomePage() {
   /* Theme */
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch {}
   }, [dark]);
 
   /* Cleanup async UI work on unmount */
@@ -321,9 +333,9 @@ export default function HomePage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showPromptHistory]);
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, type: ToastType = "success") => {
     const id = Date.now();
-    setToast({ msg, id });
+    setToast({ msg, id, type });
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
@@ -353,7 +365,7 @@ export default function HomePage() {
       });
       showToast("参考图已加入");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "参考图读取失败");
+      showToast(err instanceof Error ? err.message : "参考图读取失败", "error");
     } finally {
       if (referenceInputRef.current) referenceInputRef.current.value = "";
     }
@@ -426,6 +438,7 @@ export default function HomePage() {
 
       /* Save to history */
       const thumbnail = await createThumbnail(imageSrc(newImages[0]));
+      versionCounterRef.current += 1;
       const entry: HistoryEntry = {
         id: String(Date.now()),
         prompt: prompt.trim(),
@@ -436,7 +449,7 @@ export default function HomePage() {
         thumbnail,
         imageCount: newImages.length,
         referenceName: referenceImage?.name,
-        versionLabel: `V${versions.length + 1}`,
+        versionLabel: `V${versionCounterRef.current}`,
       };
       const versionEntry: VersionEntry = {
         ...entry,
@@ -445,15 +458,19 @@ export default function HomePage() {
       };
       setVersions(prev => [versionEntry, ...prev].slice(0, 12));
       setActiveVersionId(versionEntry.id);
-      const newHistory = [entry, ...loadHistory()].slice(0, MAX_HISTORY);
-      saveHistory(newHistory);
-      setHistory(newHistory);
+      setHistory(prev => {
+        const next = [entry, ...prev].slice(0, MAX_HISTORY);
+        saveHistory(next);
+        return next;
+      });
 
       /* Save prompt */
       const trimmed = prompt.trim();
-      const newPrompts = [trimmed, ...loadPrompts().filter(p => p !== trimmed)].slice(0, MAX_PROMPTS);
-      savePrompts(newPrompts);
-      setRecentPrompts(newPrompts);
+      setRecentPrompts(prev => {
+        const next = [trimmed, ...prev.filter(p => p !== trimmed)].slice(0, MAX_PROMPTS);
+        savePrompts(next);
+        return next;
+      });
 
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
@@ -464,9 +481,9 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, versions.length, showToast]);
+  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, showToast]);
 
-  const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); };
+  const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); };
 
   const downloadAll = () => {
     images.forEach((img, i) => setTimeout(() => downloadImage(img, i), i * 400));
@@ -505,7 +522,7 @@ export default function HomePage() {
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       showToast("已复制到剪贴板");
     } catch {
-      showToast("复制失败，请手动保存图片");
+      showToast("复制失败，请手动保存图片", "error");
     } finally {
       setCopyingIdx(null);
     }
@@ -915,7 +932,7 @@ export default function HomePage() {
               >
                 {images.map((img, i) => (
                   <div
-                    key={i}
+                    key={img.b64 ? img.b64.slice(0, 16) : (img.url ?? String(i))}
                     className="img-card"
                     style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[aspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
@@ -1091,7 +1108,7 @@ export default function HomePage() {
           key={toast.id}
           style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100, padding: "9px 16px", borderRadius: 10, background: dark ? "rgba(32,32,32,0.96)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border-focus)", color: "var(--text-primary)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", backdropFilter: "blur(12px)", animation: "fadeUp 0.2s ease", whiteSpace: "nowrap" }}
         >
-          <i className="ri-check-line" style={{ fontSize: 16, lineHeight: 1 }} /> {toast.msg}
+          <i className={toast.type === "error" ? "ri-error-warning-line" : toast.type === "warning" ? "ri-alert-line" : "ri-check-line"} style={{ fontSize: 16, lineHeight: 1 }} /> {toast.msg}
         </div>
       )}
     </div>

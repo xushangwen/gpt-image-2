@@ -8,7 +8,6 @@ type ReferenceImageInput = {
   name?: string;
 };
 
-const EXPECTED_API_HOST = "api.bltcy.ai";
 const ALLOWED_SIZES = new Set(["auto", "1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
@@ -37,14 +36,6 @@ function getConfig(): GenerateConfig {
     endpointUrl = new URL(apiEndpoint);
   } catch {
     throw new HttpError("服务端图像生成接口地址配置无效", 500);
-  }
-
-  if (endpointUrl.hostname !== EXPECTED_API_HOST) {
-    throw new HttpError(`服务端图像接口配置错误：当前指向 ${endpointUrl.hostname}，应为 ${EXPECTED_API_HOST}`, 500);
-  }
-
-  if (!endpointUrl.pathname.endsWith("/v1/images/generations")) {
-    throw new HttpError("服务端图像生成接口应配置为 https://api.bltcy.ai/v1/images/generations", 500);
   }
 
   const editEndpoint = configuredEditEndpoint;
