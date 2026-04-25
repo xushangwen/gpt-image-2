@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Space_Grotesk, Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import "remixicon/fonts/remixicon.css";
@@ -13,6 +13,12 @@ const notoSansSC = Noto_Sans_SC({
   weight: ["300", "400", "500"],
   variable: "--font-cn",
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
 
 export const metadata: Metadata = {
   title: "ImageGen — AI 图像生成",

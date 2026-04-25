@@ -24,6 +24,8 @@
   --preview-label-purple: #d8b4fe;
   --preview-label-gold: #ffdf70;
   --preview-grid-opacity: 0.58;
+  --glass-bg: rgba(18, 18, 18, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.10);
 }
 
 /* ── 亮色主题 ── */
@@ -50,6 +52,8 @@
   --preview-label-purple: #ad8be7;
   --preview-label-gold: #bf8c2e;
   --preview-grid-opacity: 0.5;
+  --glass-bg: rgba(252, 252, 252, 0.84);
+  --glass-border: rgba(0, 0, 0, 0.09);
 }
 
 * { box-sizing: border-box; }
@@ -95,11 +99,9 @@ html, body {
 .generating-card {
   position: relative;
   overflow: hidden;
-  border-radius: 32px;
+  border-radius: 20px;
   border: 1px solid var(--preview-card-border);
-  background:
-    linear-gradient(180deg, var(--preview-card-bg-top), var(--preview-card-bg));
-  box-shadow: inset 0 1px 0 var(--preview-card-highlight);
+  background: var(--surface-2);
   animation: fadeUp 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
   animation-delay: var(--preview-delay, 0s);
   contain: paint;
@@ -162,6 +164,34 @@ html, body {
   color: var(--text-primary) !important;
 }
 
+/* ── Mobile input icon buttons ── */
+.mob-icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+.mob-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+.mob-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+:root[data-theme="light"] .mob-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .generating-card,
   .generating-card__label,
@@ -171,38 +201,223 @@ html, body {
   }
 }
 
-/* ── 响应式布局 ── */
-@media (max-width: 768px) {
-  .layout-root {
-    height: auto !important;
-    min-height: 100dvh;
-    overflow: auto !important;
+/* ── 触屏设备：覆盖层按钮与删除按钮常显 ── */
+@media (hover: none) {
+  .img-card .img-overlay {
+    opacity: 1;
+    pointer-events: auto;
   }
-  .layout-inner {
-    flex-direction: column !important;
-    overflow: visible !important;
+  .history-item .delete-btn {
+    opacity: 1;
   }
+}
+
+/* 移动端专属元素，桌面默认隐藏 */
+.mobile-input-bar,
+.mobile-settings-sheet {
+  display: none;
+}
+
+/* ── Tablet 布局 (769px – 1023px) ── */
+@media (min-width: 769px) and (max-width: 1023px) {
   .layout-sidebar {
-    width: 100% !important;
-    flex-shrink: 0 !important;
-    border-right: none !important;
-    border-bottom: 1px solid var(--border);
-    overflow: visible !important;
-  }
-  .layout-sidebar__scroll {
-    flex: none !important;
-    overflow-y: visible !important;
-  }
-  .layout-sidebar__footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    background: var(--surface);
+    width: 240px !important;
   }
   .layout-main {
-    overflow: visible !important;
-    padding: 20px 16px !important;
+    padding: 20px !important;
+  }
+}
+
+/* ── Mobile 布局 (≤ 768px) ── */
+@media (max-width: 768px) {
+  .layout-root {
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  .layout-inner {
+    overflow: hidden !important;
+  }
+
+  .layout-sidebar {
+    display: none !important;
+  }
+
+  /* 主内容区留出浮动输入栏高度 */
+  .layout-main {
+    width: 100% !important;
+    padding: 20px 16px 210px !important;
     justify-content: flex-start !important;
-    min-height: 40vh;
+    overflow: auto !important;
+    height: 100% !important;
+    align-items: center !important;
+  }
+
+  /* 浮动输入卡片 */
+  .mobile-input-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    padding: 12px;
+    border-radius: 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    box-shadow: 0 4px 28px rgba(0, 0, 0, 0.20);
+    z-index: 30;
+  }
+
+  /* 浮动设置卡片：与输入栏底部对齐，向上延伸 62vh，盖在输入栏上方 */
+  /* 完全不用 transform：iOS Safari overflow:hidden 祖先 + transform + backdrop-filter 三者同时存在会导致 blur 失效 */
+  .mobile-settings-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(-62vh - 80px);
+    height: 62vh;
+    border-radius: 20px;
+    background: rgba(18, 18, 18, 0.62);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    box-shadow:
+      0 -2px 32px rgba(0, 0, 0, 0.28),
+      0 18px 58px rgba(0, 0, 0, 0.38);
+    z-index: 40;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      bottom 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0s linear 0.32s;
+  }
+  .mobile-settings-sheet.mobile-open {
+    bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+
+  /* 顶部高光渐变，模拟玻璃折射边缘，不含 backdrop-filter */
+  .mobile-settings-sheet::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 19px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 28%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .mobile-settings-panel {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
+  .mobile-settings-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  }
+
+  .mobile-settings-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+    padding: 16px 14px;
+  }
+
+  .mobile-settings-close {
+    display: flex;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+
+  .mobile-settings-close:hover {
+    border-color: var(--border-focus);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+  }
+
+  :root[data-theme="light"] .mobile-settings-backdrop {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.24));
+  }
+
+  :root[data-theme="light"] .mobile-settings-sheet {
+    background: rgba(250, 250, 250, 0.70);
+    border-color: rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+  }
+
+  :root[data-theme="light"] .mobile-settings-sheet::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.50) 0%, transparent 28%);
+  }
+
+  :root[data-theme="light"] .mobile-settings-header {
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+  }
+
+  :root[data-theme="light"] .mobile-settings-close {
+    border-color: rgba(0, 0, 0, 0.08);
+    background: rgba(255, 255, 255, 0.34);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .mobile-settings-sheet {
+      background: rgba(22, 22, 22, 0.96);
+    }
+    :root[data-theme="light"] .mobile-settings-sheet {
+      background: rgba(248, 248, 248, 0.96);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-settings-sheet {
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  .header-qs-label,
+  .header-badge,
+  .gen-btn-hint {
+    display: none !important;
+  }
+
+  .img-grid,
+  .img-grid-loading {
+    max-width: 100% !important;
+  }
+
+  .img-actions {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 }

@@ -105,6 +105,14 @@ export async function POST(req: NextRequest) {
       clearTimeout(timeoutId);
     }
 
+    // Guard against redirect-based SSRF (DNS rebinding can't be caught here, but redirects can)
+    if (response.url) {
+      try {
+        const finalHost = new URL(response.url).hostname;
+        if (isBlockedHost(finalHost)) throw new HttpError("不支持下载内网地址", 400);
+      } catch (e) { if (e instanceof HttpError) throw e; }
+    }
+
     if (!response.ok) {
       throw new HttpError(`图片源站返回错误 ${response.status}`, 502);
     }

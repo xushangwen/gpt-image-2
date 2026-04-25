@@ -37,7 +37,7 @@ function getConfig(providerOverride?: ProviderName) {
   const model = (
     getProviderEnv(provider, "ENHANCE_MODEL") ||
     process.env.ENHANCE_MODEL ||
-    "gemini-3.1-flash-lite-preview"
+    "gemini-2.0-flash-lite"
   ).trim();
 
   if (!apiKey || !chatEndpoint) {
@@ -88,6 +88,10 @@ const QUALITY_DESC: Record<string, string> = {
 
 const ALLOWED_REFERENCE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 
+function normalizeMediaType(mediaType: string) {
+  return mediaType === "image/jpg" ? "image/jpeg" : mediaType;
+}
+
 type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
@@ -137,7 +141,7 @@ export async function POST(req: NextRequest) {
       }
       userContent.push({
         type: "image_url",
-        image_url: { url: `data:${referenceImage.mediaType};base64,${referenceImage.data}` },
+        image_url: { url: `data:${normalizeMediaType(referenceImage.mediaType)};base64,${referenceImage.data}` },
       });
     }
 

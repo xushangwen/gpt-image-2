@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 /* ── Types ── */
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
@@ -367,6 +367,7 @@ export default function HomePage() {
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
   const [enhancing, setEnhancing] = useState(false);
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -375,6 +376,19 @@ export default function HomePage() {
   const mountedRef = useRef(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
+  const settingsSheetRef = useRef<HTMLDivElement>(null);
+
+  /* Close settings sheet on outside tap */
+  useEffect(() => {
+    if (!mobileSettingsOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (settingsSheetRef.current && !settingsSheetRef.current.contains(e.target as Node)) {
+        setMobileSettingsOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [mobileSettingsOpen]);
 
   /* Load from localStorage */
   useEffect(() => {
@@ -438,6 +452,11 @@ export default function HomePage() {
   }, []);
 
   const selectedAspect = ASPECT_OPTIONS.find(o => o.value === aspect)!;
+
+  const smartInference = useMemo(
+    () => aspect === "auto" ? inferSmartAspect(prompt, referenceImage) : null,
+    [aspect, prompt, referenceImage]
+  );
 
   const handleReferenceUpload = useCallback(async (file: File | undefined) => {
     if (!file) return;
@@ -508,8 +527,9 @@ export default function HomePage() {
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
+    setMobileSettingsOpen(false);
 
-    const inference = aspect === "auto" ? inferSmartAspect(prompt, referenceImage) : null;
+    const inference = smartInference;
     const effectiveSize = inference ? inference.size : selectedAspect.size;
     const effectiveAspect: AspectRatio = inference ? inference.aspect : aspect;
 
@@ -526,6 +546,7 @@ export default function HomePage() {
 
     setElapsed(0);
     const start = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
 
     try {
@@ -609,9 +630,20 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, provider, showToast]);
+  }, [prompt, loading, quality, count, aspect, referenceImage, provider, showToast, smartInference]);
 
-  const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); };
+  /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && lightboxIdx === null) {
+        handleGenerate();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleGenerate, lightboxIdx]);
+
+  const clearImages = useCallback(() => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); }, []);
 
   const handleDownload = useCallback((img: ImageResult, index: number) => {
     void downloadImage(img, index).catch(err => {
@@ -619,10 +651,10 @@ export default function HomePage() {
     });
   }, [showToast]);
 
-  const downloadAll = () => {
+  const downloadAll = useCallback(() => {
     images.forEach((img, i) => setTimeout(() => handleDownload(img, i), i * 400));
     showToast(`正在下载 ${images.length} 张图片`);
-  };
+  }, [images, handleDownload, showToast]);
 
   const copyImageToClipboard = useCallback(async (img: ImageResult, idx: number) => {
     setCopyingIdx(idx);
@@ -662,16 +694,16 @@ export default function HomePage() {
     }
   }, [showToast]);
 
-  const restoreHistory = (entry: HistoryEntry) => {
+  const restoreHistory = useCallback((entry: HistoryEntry) => {
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
     setQuality(entry.quality);
     setCount(entry.count);
     clearImages();
     promptRef.current?.focus();
-  };
+  }, [clearImages]);
 
-  const restoreVersion = (entry: VersionEntry) => {
+  const restoreVersion = useCallback((entry: VersionEntry) => {
     setImages(entry.images);
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
@@ -680,15 +712,15 @@ export default function HomePage() {
     setActiveVersionId(entry.id);
     setError(null);
     setDisplayAspect(entry.effectiveAspect ?? (entry.aspect === "auto" ? "1:1" : entry.aspect));
-  };
+  }, []);
 
-  const deleteHistoryEntry = (id: string) => {
+  const deleteHistoryEntry = useCallback((id: string) => {
     const next = history.filter(h => h.id !== id);
     saveHistory(next);
     setHistory(next);
-  };
+  }, [history]);
 
-  const clearAllHistory = () => { saveHistory([]); setHistory([]); };
+  const clearAllHistory = useCallback(() => { saveHistory([]); setHistory([]); }, []);
 
   /* Segmented control style */
   const segBtn = (active: boolean): React.CSSProperties => ({
@@ -705,6 +737,7 @@ export default function HomePage() {
   });
 
   return (
+    <>
     <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* ── Header ── */}
@@ -725,7 +758,7 @@ export default function HomePage() {
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
             ImageGen
           </span>
-          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 20, border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
+          <span className="header-badge" style={{ fontSize: 11, padding: "2px 7px", borderRadius: 20, border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
             GPT-Image-2
           </span>
         </div>
@@ -759,7 +792,7 @@ export default function HomePage() {
               );
             })}
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
+          <span className="header-qs-label" style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
             QY.Studio
           </span>
           <button
@@ -775,15 +808,18 @@ export default function HomePage() {
 
       <div className="layout-inner" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* ── Left Sidebar ── */}
+        {/* ── Left Sidebar (desktop only) ── */}
         <aside className="layout-sidebar" style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
+          <div />
           <div className="layout-sidebar__scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
 
             {/* Prompt */}
             <div className="prompt-area" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <SideLabel icon="ri-pencil-line">提示词</SideLabel>
-                <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{prompt.length}</span>
+                <span style={{ fontSize: 11, fontFamily: "var(--font-space)", color: prompt.length >= 4000 ? "var(--error, #f87171)" : prompt.length > 3500 ? "#f59e0b" : "var(--text-muted)" }}>
+                  {prompt.length > 3500 ? `${prompt.length}/4000` : prompt.length}
+                </span>
               </div>
               <div style={{ position: "relative" }}>
                 <textarea
@@ -899,12 +935,11 @@ export default function HomePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
-                {aspect === "auto" && (() => {
-                  const inf = inferSmartAspect(prompt, referenceImage);
-                  const isDefault = inf.aspect === "1:1" && !referenceImage && !prompt.trim();
+                {aspect === "auto" && smartInference && (() => {
+                  const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
                   return !isDefault ? (
                     <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
-                      → {inf.label}
+                      → {smartInference.label}
                     </span>
                   ) : null;
                 })()}
@@ -1043,6 +1078,7 @@ export default function HomePage() {
                   <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1 }} />
                   生成图像
                   <span
+                    className="gen-btn-hint"
                     aria-label="Command + Enter"
                     style={{
                       opacity: 0.48,
@@ -1067,7 +1103,7 @@ export default function HomePage() {
           {/* Loading skeleton */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}>
-              <div style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 620 : 400 }}>
+              <div className="img-grid-loading" style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 620 : 400 }}>
                 {Array.from({ length: count }).map((_, i) => (
                   <GeneratingPreviewCard
                     key={i}
@@ -1110,11 +1146,12 @@ export default function HomePage() {
           {images.length > 0 && !loading && (
             <>
               <div
+                className="img-grid"
                 style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 620 : 400 }}
               >
                 {images.map((img, i) => (
                   <div
-                    key={img.b64 ? img.b64.slice(0, 16) : (img.url ?? String(i))}
+                    key={img.url ?? (img.b64 ? `b64-${i}-${img.b64.length}` : String(i))}
                     className="img-card"
                     style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[displayAspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
@@ -1143,7 +1180,7 @@ export default function HomePage() {
               </div>
 
               {/* Action bar */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="img-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {images.length > 1 && (
                   <button className="action-btn" onClick={downloadAll} style={actionBtnStyle}>
                     <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载全部
@@ -1216,17 +1253,276 @@ export default function HomePage() {
 
           {/* Empty state */}
           {images.length === 0 && !loading && !error && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, userSelect: "none", animation: "fadeIn 0.4s ease" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 16, userSelect: "none", animation: "fadeIn 0.4s ease" }}>
               <div style={{ width: 60, height: 60, borderRadius: 16, background: "var(--surface-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <i className="ri-image-ai-line" style={{ fontSize: 28, lineHeight: 1, color: "var(--text-muted)" }} />
               </div>
               <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5 }}>
-                <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>在左侧输入提示词，开始生成</p>
+                <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>输入提示词，开始生成图像</p>
                 <p style={{ fontSize: 12, color: "var(--text-muted)" }}>支持中英文描述 · <kbd style={{ fontFamily: "var(--font-space)", fontSize: 11, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>⌘↵</kbd> 快速生成</p>
               </div>
             </div>
           )}
         </main>
+      </div>
+    </div>{/* layout-root closes here — fixed overlays below are outside overflow:hidden */}
+
+      {/* ── Mobile Input Bar ── */}
+      <div className="mobile-input-bar" style={{ backdropFilter: "blur(24px) saturate(160%)", WebkitBackdropFilter: "blur(24px) saturate(160%)" }}>
+        {/* Textarea — 透明融入卡片 */}
+        <textarea
+          value={prompt}
+          onChange={e => setPrompt(e.target.value)}
+          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+          placeholder="描述你想生成的图像..."
+          rows={3}
+          maxLength={4000}
+          style={{
+            width: "100%",
+            resize: "none",
+            padding: "2px 6px",
+            fontSize: 15,
+            lineHeight: 1.55,
+            outline: "none",
+            background: "transparent",
+            border: "none",
+            color: "var(--text-primary)",
+            fontFamily: "var(--font-cn), system-ui",
+          }}
+        />
+        {/* Toolbar：左侧图标组 | 弹簧 | 右侧发送按钮 */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          marginTop: 6,
+          paddingTop: 8,
+          borderTop: "1px solid var(--glass-border)",
+          gap: 2,
+        }}>
+          {/* 增强 */}
+          <button
+            className="mob-icon-btn"
+            onClick={enhancePrompt}
+            disabled={enhancing}
+            title="AI 增强提示词"
+          >
+            {enhancing
+              ? <i className="ri-loader-4-line" style={{ fontSize: 18, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+              : <i className="ri-magic-line" style={{ fontSize: 18, lineHeight: 1 }} />
+            }
+          </button>
+          {/* 参考图 */}
+          <button
+            className="mob-icon-btn"
+            onClick={() => referenceInputRef.current?.click()}
+            title="上传参考图"
+          >
+            <i className="ri-image-add-line" style={{ fontSize: 18, lineHeight: 1 }} />
+            {referenceImage && (
+              <span style={{ position: "absolute", top: 5, right: 5, width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", border: "1.5px solid var(--glass-bg, #121212)" }} />
+            )}
+          </button>
+          {/* 设置 */}
+          <button
+            className="mob-icon-btn"
+            onClick={() => setMobileSettingsOpen(o => !o)}
+            title="生成设置"
+            style={{ color: mobileSettingsOpen ? "var(--accent)" : undefined }}
+          >
+            <i className="ri-equalizer-line" style={{ fontSize: 18, lineHeight: 1 }} />
+          </button>
+          {/* 弹簧 */}
+          <span style={{ flex: 1 }} />
+          {/* 发送按钮 */}
+          <button
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || loading}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 12,
+              border: "none",
+              background: !prompt.trim() || loading ? "rgba(128,128,128,0.15)" : "var(--accent)",
+              color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              transition: "all 0.15s",
+              flexShrink: 0,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {loading ? (
+              <>
+                <i className="ri-loader-4-line" style={{ fontSize: 15, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                {elapsed !== null && <span style={{ fontFamily: "var(--font-space)", fontSize: 12 }}>{elapsed}s</span>}
+              </>
+            ) : (
+              <>
+                <i className="ri-arrow-up-line" style={{ fontSize: 16, lineHeight: 1 }} />
+                生成
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Mobile Settings Sheet ── */}
+      <div
+        ref={settingsSheetRef}
+        className={`mobile-settings-sheet${mobileSettingsOpen ? " mobile-open" : ""}`}
+        role="dialog"
+        aria-modal={mobileSettingsOpen}
+        aria-labelledby="mobile-settings-title"
+        aria-hidden={!mobileSettingsOpen}
+        style={{ backdropFilter: "blur(40px) saturate(180%)", WebkitBackdropFilter: "blur(40px) saturate(180%)" }}
+      >
+        <div className="mobile-settings-panel">
+        <div className="mobile-settings-header">
+          <span id="mobile-settings-title" style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 6 }}>
+            <i className="ri-equalizer-line" style={{ fontSize: 15, lineHeight: 1, color: "var(--text-muted)" }} />
+            生成设置
+          </span>
+          <button
+            type="button"
+            onClick={() => setMobileSettingsOpen(false)}
+            className="mobile-settings-close"
+            aria-label="关闭生成设置"
+          >
+            <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
+          </button>
+        </div>
+        <div className="mobile-settings-body">
+
+          {/* Reference image display (mobile settings) */}
+          {referenceImage && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
+              <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
+                <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
+                  <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{referenceImage.name}</p>
+                  <p style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{formatFileSize(referenceImage.size)}</p>
+                </div>
+                <button
+                  onClick={() => setReferenceImage(null)}
+                  style={{ alignSelf: "center", width: 26, height: 26, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <i className="ri-close-line" style={{ fontSize: 15, lineHeight: 1 }} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Aspect Ratio */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+              {aspect === "auto" && smartInference && (() => {
+                const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                return !isDefault ? (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                    → {smartInference.label}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+              {ASPECT_OPTIONS.map(opt => {
+                const active = aspect === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => { setAspect(opt.value); clearImages(); }}
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                  >
+                    <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Quality */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <SideLabel icon="ri-hd-line">画质</SideLabel>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+              {QUALITY_OPTIONS.map((opt, i) => (
+                <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Count */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <SideLabel icon="ri-apps-line">生成数量</SideLabel>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+              {COUNT_OPTIONS.map((opt, i) => (
+                <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* History (mobile settings) */}
+          {history.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <button
+                onClick={() => setShowHistory(h => !h)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
+                  <i className="ri-history-line" style={{ fontSize: 14, lineHeight: 1 }} /> 历史 ({history.length})
+                </span>
+                <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
+              </button>
+              {showHistory && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {history.slice(0, 10).map(entry => (
+                    <div
+                      key={entry.id}
+                      className="history-item"
+                      style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
+                      onClick={() => { restoreHistory(entry); setMobileSettingsOpen(false); }}
+                    >
+                      {entry.thumbnail && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={entry.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>{entry.prompt}</p>
+                        <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {entry.versionLabel ? `${entry.versionLabel} · ` : ""}{formatTime(entry.timestamp)} · {entry.imageCount} 张
+                        </p>
+                      </div>
+                      <button
+                        className="delete-btn"
+                        onClick={e => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3, flexShrink: 0 }}
+                      >
+                        <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={clearAllHistory}
+                    style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "3px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                  >
+                    <i className="ri-delete-bin-6-line" style={{ fontSize: 14, lineHeight: 1 }} /> 清空历史
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        </div>{/* end inner wrapper */}
       </div>
 
       {/* ── Lightbox ── */}
@@ -1293,7 +1589,7 @@ export default function HomePage() {
           <i className={toast.type === "error" ? "ri-error-warning-line" : toast.type === "warning" ? "ri-alert-line" : "ri-check-line"} style={{ fontSize: 16, lineHeight: 1 }} /> {toast.msg}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
