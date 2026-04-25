@@ -132,12 +132,23 @@ html, body {
 }
 
 /* ── Image card hover ── */
-.img-card .img-overlay { opacity: 0; transition: opacity 0.2s; }
-.img-card:hover .img-overlay { opacity: 1; }
+.img-card .img-overlay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.img-card:hover .img-overlay,
+.img-card:focus-within .img-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 /* ── History item hover ── */
 .history-item .delete-btn { opacity: 0; transition: opacity 0.15s; }
-.history-item:hover .delete-btn { opacity: 1; }
+.history-item:hover .delete-btn,
+.history-item:focus-within .delete-btn {
+  opacity: 1;
+}
 
 /* ── Action buttons hover ── */
 .action-btn:hover {

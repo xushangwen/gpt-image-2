@@ -6,6 +6,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
 type Quality = "low" | "medium" | "high";
 type ImageResult = { b64?: string; url?: string; mediaType: string };
+type ReferenceImage = {
+  name: string;
+  dataUrl: string;
+  thumbnail: string;
+  mediaType: string;
+  size: number;
+};
 type HistoryEntry = {
   id: string;
   prompt: string;
@@ -15,6 +22,12 @@ type HistoryEntry = {
   timestamp: number;
   thumbnail: string;
   imageCount: number;
+  referenceName?: string;
+  versionLabel?: string;
+};
+type VersionEntry = HistoryEntry & {
+  images: ImageResult[];
+  referenceThumbnail?: string;
 };
 
 /* ── Constants ── */
@@ -48,6 +61,7 @@ const LS_HISTORY = "imagegen_history_v2";
 const LS_PROMPTS = "imagegen_prompts_v2";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
+const MAX_REFERENCE_SIZE = 6 * 1024 * 1024;
 
 /* ── Utils ── */
 function imageSrc(img: ImageResult) {
@@ -105,6 +119,50 @@ function createThumbnail(src: string, maxW = 200): Promise<string> {
     img.crossOrigin = "anonymous";
     img.src = src;
   });
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("参考图读取失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function dataUrlToBase64(dataUrl: string) {
+  return dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+}
+
+function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | null, aspect: AspectRatio, quality: Quality) {
+  const trimmed = prompt.trim();
+  const aspectHint: Record<AspectRatio, string> = {
+    auto: "构图自然，主体明确，留白克制",
+    "1:1": "方形构图，主体居中但不呆板，适合社交媒体封面",
+    "3:2": "横版构图，空间层次清晰，适合海报和横幅",
+    "2:3": "竖版构图，纵深感明确，适合封面和手机屏幕",
+  };
+  const qualityHint: Record<Quality, string> = {
+    low: "快速概念草图，保留主要视觉方向",
+    medium: "完整视觉细节，质感清楚，完成度较高",
+    high: "高质量商业视觉，细节丰富，光影干净，质感精致",
+  };
+  const referenceHint = referenceImage
+    ? `参考上传图片「${referenceImage.name}」的视觉方向，延续其主体关系、色彩气质、构图节奏和材质感觉`
+    : "画面风格统一，色彩克制，主体与背景关系清楚";
+
+  return [
+    trimmed,
+    referenceHint,
+    aspectHint[aspect],
+    qualityHint[quality],
+    "避免杂乱元素，避免多余文字，画面干净，边缘细节自然",
+  ].filter(Boolean).join("，");
 }
 
 function loadHistory(): HistoryEntry[] {
@@ -204,15 +262,21 @@ export default function HomePage() {
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
   const [showPromptHistory, setShowPromptHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
   const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const generateControllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const referenceInputRef = useRef<HTMLInputElement>(null);
 
   /* Load from localStorage */
   useEffect(() => {
@@ -224,6 +288,16 @@ export default function HomePage() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   }, [dark]);
+
+  /* Cleanup async UI work on unmount */
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      generateControllerRef.current?.abort();
+    };
+  }, []);
 
   /* Keyboard: ESC / arrows for lightbox */
   useEffect(() => {
@@ -256,8 +330,54 @@ export default function HomePage() {
 
   const selectedAspect = ASPECT_OPTIONS.find(o => o.value === aspect)!;
 
+  const handleReferenceUpload = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("请选择图片文件");
+      return;
+    }
+    if (file.size > MAX_REFERENCE_SIZE) {
+      showToast("参考图不能超过 6 MB");
+      return;
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const thumbnail = await createThumbnail(dataUrl, 320);
+      setReferenceImage({
+        name: file.name,
+        dataUrl,
+        thumbnail: thumbnail || dataUrl,
+        mediaType: file.type,
+        size: file.size,
+      });
+      showToast("参考图已加入");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "参考图读取失败");
+    } finally {
+      if (referenceInputRef.current) referenceInputRef.current.value = "";
+    }
+  }, [showToast]);
+
+  const enhancePrompt = useCallback(() => {
+    if (!prompt.trim()) {
+      promptRef.current?.focus();
+      showToast("先输入一句提示词");
+      return;
+    }
+    setPrompt(buildEnhancedPrompt(prompt, referenceImage, aspect, quality));
+    showToast("提示词已增强");
+  }, [prompt, referenceImage, aspect, quality, showToast]);
+
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
+    generateControllerRef.current?.abort();
+    const controller = new AbortController();
+    generateControllerRef.current = controller;
+    const generationPrompt = referenceImage
+      ? (prompt.includes(referenceImage.name) ? prompt : buildEnhancedPrompt(prompt, referenceImage, aspect, quality))
+      : prompt;
+
     setLoading(true);
     setError(null);
     setImages([]);
@@ -271,11 +391,34 @@ export default function HomePage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, size: selectedAspect.size, quality, n: count }),
+        body: JSON.stringify({
+          prompt: generationPrompt,
+          size: selectedAspect.size,
+          quality,
+          n: count,
+          referenceImage: referenceImage
+            ? {
+                data: dataUrlToBase64(referenceImage.dataUrl),
+                mediaType: referenceImage.mediaType,
+                name: referenceImage.name,
+              }
+            : undefined,
+        }),
+        signal: controller.signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "生成失败，请重试");
-      if (!data.images?.length) throw new Error("未收到图片数据");
+      const rawText = await res.text();
+      let data: { images?: ImageResult[]; warning?: string; error?: string } | null = null;
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          if (!res.ok) throw new Error("生成服务暂时不可用，请稍后重试");
+          throw new Error("生成服务返回了无法解析的数据");
+        }
+      }
+      if (!res.ok) throw new Error(data?.error ?? "生成失败，请重试");
+      if (!data?.images?.length) throw new Error("未收到图片数据");
+      if (!mountedRef.current) return;
 
       const newImages: ImageResult[] = data.images;
       setImages(newImages);
@@ -292,7 +435,16 @@ export default function HomePage() {
         timestamp: Date.now(),
         thumbnail,
         imageCount: newImages.length,
+        referenceName: referenceImage?.name,
+        versionLabel: `V${versions.length + 1}`,
       };
+      const versionEntry: VersionEntry = {
+        ...entry,
+        images: newImages,
+        referenceThumbnail: referenceImage?.thumbnail,
+      };
+      setVersions(prev => [versionEntry, ...prev].slice(0, 12));
+      setActiveVersionId(versionEntry.id);
       const newHistory = [entry, ...loadHistory()].slice(0, MAX_HISTORY);
       saveHistory(newHistory);
       setHistory(newHistory);
@@ -304,14 +456,17 @@ export default function HomePage() {
       setRecentPrompts(newPrompts);
 
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
-      setLoading(false);
+      if (generateControllerRef.current === controller) generateControllerRef.current = null;
+      if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count, aspect, showToast]);
+  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, versions.length, showToast]);
 
-  const clearImages = () => { setImages([]); setError(null); };
+  const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); };
 
   const downloadAll = () => {
     images.forEach((img, i) => setTimeout(() => downloadImage(img, i), i * 400));
@@ -363,6 +518,16 @@ export default function HomePage() {
     setCount(entry.count);
     clearImages();
     promptRef.current?.focus();
+  };
+
+  const restoreVersion = (entry: VersionEntry) => {
+    setImages(entry.images);
+    setPrompt(entry.prompt);
+    setAspect(entry.aspect);
+    setQuality(entry.quality);
+    setCount(entry.count);
+    setActiveVersionId(entry.id);
+    setError(null);
   };
 
   const deleteHistoryEntry = (id: string) => {
@@ -457,7 +622,7 @@ export default function HomePage() {
 
                 {/* Prompt history dropdown */}
                 {showPromptHistory && recentPrompts.length > 0 && (
-                  <div style={{ position: "absolute", top: "calc(100% + 5px)", left: 0, right: 0, borderRadius: 10, border: "1px solid var(--border-focus)", background: "var(--surface)", boxShadow: "0 10px 30px rgba(0,0,0,0.25)", zIndex: 20, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+                  <div style={{ marginTop: 6, borderRadius: 10, border: "1px solid var(--border-focus)", background: "var(--surface)", boxShadow: "0 8px 22px rgba(0,0,0,0.18)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
                     <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
                         <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
@@ -469,7 +634,7 @@ export default function HomePage() {
                         清空
                       </button>
                     </div>
-                    {recentPrompts.map((p, i) => (
+                    {recentPrompts.slice(0, 3).map((p, i) => (
                       <button
                         key={i}
                         onMouseDown={e => { e.preventDefault(); setPrompt(p); setShowPromptHistory(false); promptRef.current?.focus(); }}
@@ -480,10 +645,69 @@ export default function HomePage() {
                         {p}
                       </button>
                     ))}
+                    {recentPrompts.length > 3 && (
+                      <div style={{ padding: "5px 12px 7px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+                        还有 {recentPrompts.length - 3} 条最近提示词
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, position: "relative", zIndex: 25 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPromptHistory(false);
+                    enhancePrompt();
+                  }}
+                  className="action-btn"
+                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8 }}
+                >
+                  <i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPromptHistory(false);
+                    referenceInputRef.current?.click();
+                  }}
+                  className="action-btn"
+                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8 }}
+                >
+                  <i className="ri-image-add-line" style={{ fontSize: 14, lineHeight: 1 }} /> 参考图
+                </button>
+                <input
+                  ref={referenceInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={e => handleReferenceUpload(e.target.files?.[0])}
+                  style={{ display: "none" }}
+                />
+              </div>
             </div>
+
+            {/* Reference image */}
+            {referenceImage && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
+                <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
+                  <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
+                    <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{referenceImage.name}</p>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{formatFileSize(referenceImage.size)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReferenceImage(null)}
+                    title="移除参考图"
+                    style={{ alignSelf: "center", width: 26, height: 26, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  >
+                    <i className="ri-close-line" style={{ fontSize: 15, lineHeight: 1 }} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Aspect Ratio */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -559,7 +783,9 @@ export default function HomePage() {
                         )}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>{entry.prompt}</p>
-                          <p style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatTime(entry.timestamp)} · {entry.imageCount} 张</p>
+                          <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {entry.versionLabel ? `${entry.versionLabel} · ` : ""}{formatTime(entry.timestamp)} · {entry.imageCount} 张{entry.referenceName ? " · 参考" : ""}
+                          </p>
                         </div>
                         <button
                           className="delete-btn"
@@ -742,6 +968,50 @@ export default function HomePage() {
                   <i className="ri-refresh-line" style={{ fontSize: 14, lineHeight: 1 }} /> 重新生成
                 </button>
               </div>
+
+              {versions.length > 0 && (
+                <section style={{ width: "100%", maxWidth: 620, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <SideLabel icon="ri-stack-line">版本</SideLabel>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{versions.length}/12</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 8 }}>
+                    {versions.slice(0, 6).map(version => {
+                      const active = activeVersionId === version.id;
+                      return (
+                        <button
+                          key={version.id}
+                          type="button"
+                          onClick={() => restoreVersion(version)}
+                          style={{
+                            minWidth: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: 7,
+                            borderRadius: 10,
+                            border: "1px solid",
+                            borderColor: active ? "var(--accent)" : "var(--border)",
+                            background: active ? "var(--accent-dim)" : "var(--surface-2)",
+                            color: active ? "var(--accent)" : "var(--text-secondary)",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={version.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                          <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                            <span style={{ fontSize: 12, fontWeight: 500, fontFamily: "var(--font-space)" }}>{version.versionLabel}</span>
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {version.imageCount} 张{version.referenceName ? " · 有参考" : ""}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
             </>
           )}
 
@@ -898,6 +1168,8 @@ function FlickeringGrid({
     let columns = 0;
     let rows = 0;
     let opacities: number[] = [];
+    const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduceMotion = reduceMotionQuery.matches;
 
     const initializeGrid = () => {
       const rect = parent.getBoundingClientRect();
@@ -926,7 +1198,7 @@ function FlickeringGrid({
       for (let row = 0; row < rows; row += 1) {
         for (let col = 0; col < columns; col += 1) {
           const index = row * columns + col;
-          if (Math.random() < flickerChance) {
+          if (!reduceMotion && Math.random() < flickerChance) {
             opacities[index] = Math.random() * maxOpacity;
           }
 
@@ -937,20 +1209,31 @@ function FlickeringGrid({
         }
       }
 
-      animationFrameId = window.requestAnimationFrame(drawGrid);
+      if (!reduceMotion) {
+        animationFrameId = window.requestAnimationFrame(drawGrid);
+      }
     };
 
     const resizeObserver = new ResizeObserver(() => {
+      window.cancelAnimationFrame(animationFrameId);
       initializeGrid();
+      drawGrid();
     });
+    const handleReduceMotionChange = (event: MediaQueryListEvent) => {
+      reduceMotion = event.matches;
+      window.cancelAnimationFrame(animationFrameId);
+      drawGrid();
+    };
 
     initializeGrid();
     drawGrid();
     resizeObserver.observe(parent);
+    reduceMotionQuery.addEventListener("change", handleReduceMotionChange);
 
     return () => {
       window.cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      reduceMotionQuery.removeEventListener("change", handleReduceMotionChange);
     };
   }, [color, flickerChance, gridGap, maxOpacity, squareSize]);
 
