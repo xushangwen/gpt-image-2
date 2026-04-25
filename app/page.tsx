@@ -18,11 +18,11 @@ type HistoryEntry = {
 };
 
 /* ── Constants ── */
-const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: string }[] = [
-  { label: "自动", value: "auto",  size: "auto",      icon: "ri-fullscreen-line" },
-  { label: "方形", value: "1:1",   size: "1024x1024", icon: "ri-checkbox-blank-line" },
-  { label: "横版", value: "3:2",   size: "1536x1024", icon: "ri-image-line" },
-  { label: "竖版", value: "2:3",   size: "1024x1536", icon: "ri-smartphone-line" },
+const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: string; rotate?: number }[] = [
+  { label: "自动", value: "auto",  size: "auto",      icon: "ri-aspect-ratio-line" },
+  { label: "方形", value: "1:1",   size: "1024x1024", icon: "ri-square-line" },
+  { label: "横版", value: "3:2",   size: "1536x1024", icon: "ri-rectangle-line" },
+  { label: "竖版", value: "2:3",   size: "1024x1536", icon: "ri-rectangle-line", rotate: 90 },
 ];
 
 const QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
@@ -32,9 +32,9 @@ const QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
 ];
 
 const COUNT_OPTIONS: { n: number; icon: string }[] = [
-  { n: 1, icon: "ri-layout-fill" },
-  { n: 2, icon: "ri-layout-2-fill" },
-  { n: 4, icon: "ri-grid-fill" },
+  { n: 1, icon: "ri-image-line" },
+  { n: 2, icon: "ri-gallery-line" },
+  { n: 4, icon: "ri-layout-grid-line" },
 ];
 
 const CARD_ASPECT: Record<AspectRatio, string> = {
@@ -55,6 +55,16 @@ function imageSrc(img: ImageResult) {
 }
 
 function downloadImage(img: ImageResult, index: number) {
+  if (!img.b64 && img.url) {
+    const a = document.createElement("a");
+    a.href = img.url;
+    a.download = `imagegen-${Date.now()}-${index + 1}`;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.click();
+    return;
+  }
+
   const el = new Image();
   el.onload = () => {
     const canvas = document.createElement("canvas");
@@ -79,15 +89,20 @@ function createThumbnail(src: string, maxW = 200): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const ratio = img.naturalHeight / img.naturalWidth;
-      const w = Math.min(maxW, img.naturalWidth);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = Math.round(w * ratio);
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.5));
+      try {
+        const ratio = img.naturalHeight / img.naturalWidth;
+        const w = Math.min(maxW, img.naturalWidth);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = Math.round(w * ratio);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.5));
+      } catch {
+        resolve("");
+      }
     };
     img.onerror = () => resolve("");
+    img.crossOrigin = "anonymous";
     img.src = src;
   });
 }
@@ -264,6 +279,7 @@ export default function HomePage() {
 
       const newImages: ImageResult[] = data.images;
       setImages(newImages);
+      if (data.warning) showToast(data.warning);
 
       /* Save to history */
       const thumbnail = await createThumbnail(imageSrc(newImages[0]));
@@ -293,7 +309,7 @@ export default function HomePage() {
       setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count, aspect]);
+  }, [prompt, loading, selectedAspect.size, quality, count, aspect, showToast]);
 
   const clearImages = () => { setImages([]); setError(null); };
 
@@ -305,6 +321,20 @@ export default function HomePage() {
   const copyImageToClipboard = useCallback(async (img: ImageResult, idx: number) => {
     setCopyingIdx(idx);
     try {
+      if (!img.b64 && img.url) {
+        try {
+          const response = await fetch(img.url, { mode: "cors" });
+          const blob = await response.blob();
+          if (!blob.type.startsWith("image/")) throw new Error();
+          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+          showToast("已复制到剪贴板");
+        } catch {
+          await navigator.clipboard.writeText(img.url);
+          showToast("已复制图片链接");
+        }
+        return;
+      }
+
       const image = new Image();
       await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
@@ -373,7 +403,7 @@ export default function HomePage() {
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <i className="ri-magic-fill" style={{ fontSize: 14, lineHeight: 1, color: "var(--bg)" }} />
+            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--bg)" }} />
           </div>
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
             ImageGen
@@ -467,7 +497,7 @@ export default function HomePage() {
                       onClick={() => { setAspect(opt.value); clearImages(); }}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
                     >
-                      <i className={opt.icon} style={{ fontSize: 16, lineHeight: 1 }} />
+                      <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
                       {opt.label}
                     </button>
                   );
@@ -587,9 +617,21 @@ export default function HomePage() {
                 </>
               ) : (
                 <>
-                  <i className="ri-magic-fill" style={{ fontSize: 16, lineHeight: 1 }} />
+                  <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1 }} />
                   生成图像
-                  <span style={{ fontSize: 11, opacity: 0.45, marginLeft: 2 }}>⌘↵</span>
+                  <span
+                    aria-label="Command + Enter"
+                    style={{
+                      opacity: 0.48,
+                      marginLeft: 2,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 1,
+                    }}
+                  >
+                    <i className="ri-command-line" style={{ fontSize: 12, lineHeight: 1 }} />
+                    <i className="ri-corner-down-left-line" style={{ fontSize: 13, lineHeight: 1 }} />
+                  </span>
                 </>
               )}
             </button>
@@ -602,18 +644,14 @@ export default function HomePage() {
           {/* Loading skeleton */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}>
-              <div style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 700 : 460 }}>
+              <div style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 620 : 400 }}>
                 {Array.from({ length: count }).map((_, i) => (
-                  <div
+                  <GeneratingPreviewCard
                     key={i}
-                    style={{
-                      aspectRatio: CARD_ASPECT[aspect],
-                      borderRadius: 14,
-                      border: "1px solid var(--border)",
-                      background: "linear-gradient(90deg, var(--surface) 25%, var(--surface-3) 50%, var(--surface) 75%)",
-                      backgroundSize: "200% 100%",
-                      animation: `shimmer 1.6s ease-in-out ${i * 0.15}s infinite`,
-                    }}
+                    aspect={aspect}
+                    index={i}
+                    elapsed={elapsed}
+                    dark={dark}
                   />
                 ))}
               </div>
@@ -647,7 +685,7 @@ export default function HomePage() {
           {images.length > 0 && !loading && (
             <>
               <div
-                style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 700 : 460 }}
+                style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 620 : 400 }}
               >
                 {images.map((img, i) => (
                   <div
@@ -798,4 +836,123 @@ function SideLabel({ children, icon }: { children: React.ReactNode; icon?: strin
       {children}
     </span>
   );
+}
+
+function GeneratingPreviewCard({
+  aspect,
+  index,
+  elapsed,
+  dark,
+}: {
+  aspect: AspectRatio;
+  index: number;
+  elapsed: number | null;
+  dark: boolean;
+}) {
+  return (
+    <div
+      className="generating-card"
+      aria-label={`正在生成图片${elapsed !== null ? `，已等待 ${elapsed} 秒` : ""}`}
+      style={{
+        aspectRatio: CARD_ASPECT[aspect],
+        "--preview-delay": `${index * 0.18}s`,
+      } as React.CSSProperties}
+    >
+      <FlickeringGrid
+        color={dark ? "255,255,255" : "0,0,0"}
+        flickerChance={0.08}
+        gridGap={8}
+        maxOpacity={dark ? 0.1 : 0.08}
+        squareSize={5}
+      />
+      <div className="generating-card__label">
+        正在创建图像....
+      </div>
+    </div>
+  );
+}
+
+function FlickeringGrid({
+  color,
+  flickerChance,
+  gridGap,
+  maxOpacity,
+  squareSize,
+}: {
+  color: string;
+  flickerChance: number;
+  gridGap: number;
+  maxOpacity: number;
+  squareSize: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent) return;
+
+    let animationFrameId = 0;
+    let width = 0;
+    let height = 0;
+    let columns = 0;
+    let rows = 0;
+    let opacities: number[] = [];
+
+    const initializeGrid = () => {
+      const rect = parent.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      width = Math.max(1, Math.floor(rect.width + 24));
+      height = Math.max(1, Math.floor(rect.height + 24));
+      columns = Math.ceil(width / (squareSize + gridGap));
+      rows = Math.ceil(height / (squareSize + gridGap));
+      opacities = Array.from({ length: columns * rows }, () => Math.random() * maxOpacity);
+
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const drawGrid = () => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.clearRect(0, 0, width, height);
+
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < columns; col += 1) {
+          const index = row * columns + col;
+          if (Math.random() < flickerChance) {
+            opacities[index] = Math.random() * maxOpacity;
+          }
+
+          const x = col * (squareSize + gridGap) - 12;
+          const y = row * (squareSize + gridGap) - 12;
+          ctx.fillStyle = `rgba(${color}, ${opacities[index]})`;
+          ctx.fillRect(x, y, squareSize, squareSize);
+        }
+      }
+
+      animationFrameId = window.requestAnimationFrame(drawGrid);
+    };
+
+    const resizeObserver = new ResizeObserver(() => {
+      initializeGrid();
+    });
+
+    initializeGrid();
+    drawGrid();
+    resizeObserver.observe(parent);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrameId);
+      resizeObserver.disconnect();
+    };
+  }, [color, flickerChance, gridGap, maxOpacity, squareSize]);
+
+  return <canvas className="flickering-grid" ref={canvasRef} aria-hidden="true" />;
 }
