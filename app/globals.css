@@ -16,24 +16,40 @@
   --accent-glow: rgba(255, 255, 255, 0.06);
   --btn-text: #000000;
   --preview-card-bg: #151515;
+  --preview-card-bg-top: #171717;
+  --preview-card-border: rgba(255, 255, 255, 0.055);
+  --preview-card-highlight: rgba(255, 255, 255, 0.045);
+  --preview-label-base: #efefef;
+  --preview-label-blue: #74d0ff;
+  --preview-label-purple: #d8b4fe;
+  --preview-label-gold: #ffdf70;
+  --preview-grid-opacity: 0.58;
 }
 
 /* ── 亮色主题 ── */
 :root[data-theme="light"] {
-  --bg: #f5f4f2;
+  --bg: #f4f4f4;
   --surface: #ffffff;
-  --surface-2: #edecea;
-  --surface-3: #e3e1de;
-  --border: rgba(0, 0, 0, 0.07);
-  --border-focus: rgba(0, 0, 0, 0.18);
+  --surface-2: #f4f4f4;
+  --surface-3: #f4f4f4;
+  --border: rgba(0, 0, 0, 0.06);
+  --border-focus: rgba(0, 0, 0, 0.16);
   --text-primary: #111111;
   --text-secondary: #555555;
-  --text-muted: #aaaaaa;
+  --text-muted: #a6a6a6;
   --accent: #111111;
-  --accent-dim: rgba(0, 0, 0, 0.06);
-  --accent-glow: rgba(0, 0, 0, 0.05);
+  --accent-dim: rgba(0, 0, 0, 0.042);
+  --accent-glow: rgba(0, 0, 0, 0.035);
   --btn-text: #ffffff;
-  --preview-card-bg: #f5f3ef;
+  --preview-card-bg: #f4f4f4;
+  --preview-card-bg-top: #f4f4f4;
+  --preview-card-border: rgba(0, 0, 0, 0.042);
+  --preview-card-highlight: rgba(255, 255, 255, 0.72);
+  --preview-label-base: #4d4d4d;
+  --preview-label-blue: #5aa6d6;
+  --preview-label-purple: #ad8be7;
+  --preview-label-gold: #bf8c2e;
+  --preview-grid-opacity: 0.5;
 }
 
 * { box-sizing: border-box; }
@@ -80,10 +96,10 @@ html, body {
   position: relative;
   overflow: hidden;
   border-radius: 32px;
-  border: 1px solid color-mix(in srgb, var(--border-focus) 26%, transparent);
+  border: 1px solid var(--preview-card-border);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--preview-card-bg) 96%, var(--text-primary) 4%), var(--preview-card-bg));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--border-focus) 18%, transparent);
+    linear-gradient(180deg, var(--preview-card-bg-top), var(--preview-card-bg));
+  box-shadow: inset 0 1px 0 var(--preview-card-highlight);
   animation: fadeUp 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
   animation-delay: var(--preview-delay, 0s);
   contain: paint;
@@ -94,8 +110,8 @@ html, body {
   top: 28px;
   left: 28px;
   z-index: 4;
-  color: var(--text-primary);
-  background: linear-gradient(100deg, var(--text-primary) 0 26%, #74d0ff 36%, #d8b4fe 46%, #ffdf70 56%, var(--text-primary) 68% 100%);
+  color: var(--preview-label-base);
+  background: linear-gradient(100deg, var(--preview-label-base) 0 26%, var(--preview-label-blue) 36%, var(--preview-label-purple) 46%, var(--preview-label-gold) 56%, var(--preview-label-base) 68% 100%);
   background-size: 240% 100%;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -112,7 +128,7 @@ html, body {
   z-index: 2;
   width: calc(100% + 24px);
   height: calc(100% + 24px);
-  opacity: 0.58;
+  opacity: var(--preview-grid-opacity);
 }
 
 /* ── Image card hover ── */

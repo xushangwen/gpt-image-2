@@ -859,14 +859,14 @@ function GeneratingPreviewCard({
       } as React.CSSProperties}
     >
       <FlickeringGrid
-        color={dark ? "255,255,255" : "0,0,0"}
-        flickerChance={0.08}
+        color={dark ? "255,255,255" : "58,52,44"}
+        flickerChance={dark ? 0.08 : 0.06}
         gridGap={8}
-        maxOpacity={dark ? 0.1 : 0.08}
+        maxOpacity={dark ? 0.1 : 0.078}
         squareSize={5}
       />
       <div className="generating-card__label">
-        正在创建图像....
+        正在创建图像......
       </div>
     </div>
   );
