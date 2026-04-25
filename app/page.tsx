@@ -191,32 +191,6 @@ function inferSmartAspect(prompt: string, referenceImage: ReferenceImage | null)
   return { size: '1024x1024', aspect: '1:1', label: '方形 · 默认' };
 }
 
-function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | null, aspect: AspectRatio, quality: Quality, overrideAspect?: AspectRatio) {
-  const trimmed = prompt.trim();
-  const aspectHint: Record<AspectRatio, string> = {
-    auto: "构图自然，主体明确，留白克制",
-    "1:1": "方形构图，主体居中但不呆板，适合社交媒体封面",
-    "3:2": "横版构图，空间层次清晰，适合海报和横幅",
-    "2:3": "竖版构图，纵深感明确，适合封面和手机屏幕",
-  };
-  const effectiveAspect = overrideAspect ?? aspect;
-  const qualityHint: Record<Quality, string> = {
-    low: "快速概念草图，保留主要视觉方向",
-    medium: "完整视觉细节，质感清楚，完成度较高",
-    high: "高质量商业视觉，细节丰富，光影干净，质感精致",
-  };
-  const referenceHint = referenceImage
-    ? `参考上传图片「${referenceImage.name}」的视觉方向，延续其主体关系、色彩气质、构图节奏和材质感觉`
-    : "画面风格统一，色彩克制，主体与背景关系清楚";
-
-  return [
-    trimmed,
-    referenceHint,
-    aspectHint[effectiveAspect],
-    qualityHint[quality],
-    "避免杂乱元素，避免多余文字，画面干净，边缘细节自然",
-  ].filter(Boolean).join("，");
-}
 
 function loadHistory(): HistoryEntry[] {
   try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]"); } catch { return []; }
@@ -333,6 +307,7 @@ export default function HomePage() {
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
   const [enhancing, setEnhancing] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState<"analyzing" | "generating" | null>(null);
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -464,7 +439,6 @@ export default function HomePage() {
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
 
-    // 计算本次生成使用的实际尺寸（auto 模式做语义推断）
     const inference = aspect === "auto" ? inferSmartAspect(prompt, referenceImage) : null;
     const effectiveSize = inference ? inference.size : selectedAspect.size;
     const effectiveAspect: AspectRatio = inference ? inference.aspect : aspect;
@@ -472,17 +446,43 @@ export default function HomePage() {
     generateControllerRef.current?.abort();
     const controller = new AbortController();
     generateControllerRef.current = controller;
-    const generationPrompt = referenceImage
-      ? (prompt.includes(referenceImage.name) ? prompt : buildEnhancedPrompt(prompt, referenceImage, aspect, quality, effectiveAspect))
-      : prompt;
 
     setLoading(true);
     setError(null);
     setImages([]);
-    setElapsed(0);
+    setElapsed(null);
     setShowPromptHistory(false);
     setDisplayAspect(effectiveAspect);
+    setLoadingPhase(referenceImage ? "analyzing" : "generating");
 
+    // 若有参考图，先用 Gemini vision 分析其视觉风格并融合进提示词
+    let generationPrompt = prompt.trim();
+    if (referenceImage) {
+      try {
+        const res = await fetch("/api/enhance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt,
+            aspect,
+            quality,
+            referenceImage: { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" },
+          }),
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.enhancedPrompt) generationPrompt = data.enhancedPrompt;
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        // 分析失败时静默降级，继续用原始提示词生成
+      }
+      if (!mountedRef.current) return;
+      setLoadingPhase("generating");
+    }
+
+    setElapsed(0);
     const start = Date.now();
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
 
@@ -495,13 +495,6 @@ export default function HomePage() {
           size: effectiveSize,
           quality,
           n: count,
-          referenceImage: referenceImage
-            ? {
-                data: dataUrlToBase64(referenceImage.dataUrl),
-                mediaType: referenceImage.mediaType,
-                name: referenceImage.name,
-              }
-            : undefined,
         }),
         signal: controller.signal,
       });
@@ -566,7 +559,7 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
       if (generateControllerRef.current === controller) generateControllerRef.current = null;
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) { setLoading(false); setLoadingPhase(null); }
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
   }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, showToast]);
@@ -961,7 +954,7 @@ export default function HomePage() {
               {loading ? (
                 <>
                   <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
-                  生成中{elapsed !== null ? ` · ${elapsed}s` : ""}
+                  {loadingPhase === "analyzing" ? "分析参考图..." : `生成中${elapsed !== null ? ` · ${elapsed}s` : ""}`}
                 </>
               ) : (
                 <>
@@ -1004,7 +997,9 @@ export default function HomePage() {
                 ))}
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>正在生成{elapsed !== null ? ` · ${elapsed}s` : ""}</p>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                {loadingPhase === "analyzing" ? "正在分析参考图风格..." : `正在生成${elapsed !== null ? ` · ${elapsed}s` : ""}`}
+              </p>
                 {elapsed !== null && elapsed >= 60 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,180,0,0.22)", background: "rgba(255,180,0,0.05)", fontSize: 12, color: "#ffb400" }}>
                     <i className="ri-alert-line" style={{ fontSize: 14, lineHeight: 1 }} /> 超过 60s，完成后可尝试重新生成
