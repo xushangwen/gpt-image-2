@@ -464,7 +464,7 @@ export default function HomePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt,
-            aspect,
+            aspect: effectiveAspect,
             quality,
             referenceImage: { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" },
           }),
