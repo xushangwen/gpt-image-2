@@ -73,35 +73,64 @@ function imageSrc(img: ImageResult) {
   return img.b64 ? `data:${img.mediaType};base64,${img.b64}` : img.url!;
 }
 
-function downloadImage(img: ImageResult, index: number) {
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function imageElementFromSrc(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("图片加载失败"));
+    el.crossOrigin = "anonymous";
+    el.src = src;
+  });
+}
+
+function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("图片导出失败"));
+    }, "image/jpeg", 0.95);
+  });
+}
+
+async function downloadImage(img: ImageResult, index: number) {
+  const filename = `imagegen-${Date.now()}-${index + 1}.jpg`;
+
   if (!img.b64 && img.url) {
-    const a = document.createElement("a");
-    a.href = img.url;
-    a.download = `imagegen-${Date.now()}-${index + 1}`;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.click();
+    const res = await fetch("/api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: img.url, filename }),
+    });
+    if (!res.ok) {
+      let message = "图片下载失败";
+      try {
+        const data = await res.json();
+        message = data.error ?? message;
+      } catch {}
+      throw new Error(message);
+    }
+    saveBlob(await res.blob(), filename);
     return;
   }
 
-  const el = new Image();
-  el.onload = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = el.naturalWidth;
-    canvas.height = el.naturalHeight;
-    canvas.getContext("2d")!.drawImage(el, 0, 0);
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `imagegen-${Date.now()}-${index + 1}.jpg`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }, "image/jpeg", 0.95);
-  };
-  el.crossOrigin = "anonymous";
-  el.src = imageSrc(img);
+  const loaded = await imageElementFromSrc(imageSrc(img));
+  const canvas = document.createElement("canvas");
+  canvas.width = loaded.naturalWidth;
+  canvas.height = loaded.naturalHeight;
+  canvas.getContext("2d")!.drawImage(loaded, 0, 0);
+  saveBlob(await canvasToJpegBlob(canvas), filename);
 }
 
 function createThumbnail(src: string, maxW = 200): Promise<string> {
@@ -573,8 +602,14 @@ export default function HomePage() {
 
   const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); };
 
+  const handleDownload = useCallback((img: ImageResult, index: number) => {
+    void downloadImage(img, index).catch(err => {
+      showToast(err instanceof Error ? err.message : "图片下载失败", "error");
+    });
+  }, [showToast]);
+
   const downloadAll = () => {
-    images.forEach((img, i) => setTimeout(() => downloadImage(img, i), i * 400));
+    images.forEach((img, i) => setTimeout(() => handleDownload(img, i), i * 400));
     showToast(`正在下载 ${images.length} 张图片`);
   };
 
@@ -1056,7 +1091,7 @@ export default function HomePage() {
                           : <i className="ri-file-copy-line" style={{ fontSize: 14, lineHeight: 1 }} />
                         }
                       </button>
-                      <button onClick={e => { e.stopPropagation(); downloadImage(img, i); }} style={overlayBtnStyle} title="下载">
+                      <button onClick={e => { e.stopPropagation(); handleDownload(img, i); }} style={overlayBtnStyle} title="下载">
                         <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} />
                       </button>
                       <button onClick={e => { e.stopPropagation(); setLightboxIdx(i); }} style={overlayBtnStyle} title="放大">
@@ -1075,7 +1110,7 @@ export default function HomePage() {
                   </button>
                 )}
                 {images.length === 1 && (
-                  <button className="action-btn" onClick={() => downloadImage(images[0], 0)} style={actionBtnStyle}>
+                  <button className="action-btn" onClick={() => handleDownload(images[0], 0)} style={actionBtnStyle}>
                     <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载 JPEG
                   </button>
                 )}
@@ -1199,7 +1234,7 @@ export default function HomePage() {
                 : <i className="ri-file-copy-line" style={{ fontSize: 16, lineHeight: 1 }} />
               }
             </button>
-            <button onClick={e => { e.stopPropagation(); downloadImage(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="下载">
+            <button onClick={e => { e.stopPropagation(); handleDownload(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="下载">
               <i className="ri-download-2-line" style={{ fontSize: 16, lineHeight: 1 }} />
             </button>
             <button onClick={() => setLightboxIdx(null)} style={lightboxBtnStyle} title="关闭 (ESC)">

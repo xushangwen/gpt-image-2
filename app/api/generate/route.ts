@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 type ImageResult = { b64?: string; url?: string; mediaType: string };
+type ProviderName = "tuzi" | "bltcy" | "custom";
 type ReferenceEndpointKind = "chat-completions" | "images-edits";
 type GenerateConfig = {
+  provider: ProviderName;
   apiKey: string;
   apiEndpoint: string;
   referenceEndpoint: string;
@@ -18,6 +20,26 @@ type ReferenceImageInput = {
   name?: string;
 };
 
+const PROVIDER_PRESETS: Record<Exclude<ProviderName, "custom">, {
+  apiEndpoint: string;
+  referenceEndpoint: string;
+  referenceImageField: string;
+  referenceQuality: string;
+}> = {
+  tuzi: {
+    apiEndpoint: "https://api.tu-zi.com/v1/images/generations",
+    referenceEndpoint: "https://api.tu-zi.com/v1/images/edits",
+    referenceImageField: "image",
+    referenceQuality: "2k",
+  },
+  bltcy: {
+    apiEndpoint: "https://api.bltcy.ai/v1/images/generations",
+    referenceEndpoint: "https://api.bltcy.ai/v1/images/edits",
+    referenceImageField: "image",
+    referenceQuality: "2k",
+  },
+};
+
 const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
@@ -31,14 +53,40 @@ class HttpError extends Error {
   }
 }
 
+function getProvider(): ProviderName {
+  const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
+  if (provider === "tuzi" || provider === "bltcy" || provider === "custom") return provider;
+  throw new HttpError(`不支持的图像中转配置：${provider}`, 500);
+}
+
+function providerEnvName(provider: ProviderName, suffix: string) {
+  return `${provider.toUpperCase()}_${suffix}`;
+}
+
+function getProviderEnv(provider: ProviderName, suffix: string) {
+  if (provider === "custom") return undefined;
+  return process.env[providerEnvName(provider, suffix)]?.trim();
+}
+
+function getEndpointKind(endpoint: string): ReferenceEndpointKind {
+  const pathname = new URL(endpoint).pathname.replace(/\/+$/, "");
+  return pathname.endsWith("/chat/completions") ? "chat-completions" : "images-edits";
+}
+
 function getConfig(): GenerateConfig {
-  const apiKey = process.env.IMAGE_API_KEY?.trim();
-  const apiEndpoint = process.env.IMAGE_API_ENDPOINT?.trim();
-  const configuredReferenceEndpoint = process.env.IMAGE_REFERENCE_ENDPOINT?.trim() || process.env.IMAGE_EDIT_ENDPOINT?.trim();
-  const model = process.env.IMAGE_MODEL?.trim();
-  const referenceModel = process.env.IMAGE_REFERENCE_MODEL?.trim() || model;
-  const referenceImageField = process.env.IMAGE_REFERENCE_IMAGE_FIELD?.trim() || "image";
-  const referenceQuality = process.env.IMAGE_REFERENCE_QUALITY?.trim() || "2k";
+  const provider = getProvider();
+  const preset = provider === "custom" ? null : PROVIDER_PRESETS[provider];
+  const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
+  const apiEndpoint = getProviderEnv(provider, "API_ENDPOINT") || preset?.apiEndpoint || process.env.IMAGE_API_ENDPOINT?.trim();
+  const configuredReferenceEndpoint =
+    getProviderEnv(provider, "REFERENCE_ENDPOINT") ||
+    preset?.referenceEndpoint ||
+    process.env.IMAGE_REFERENCE_ENDPOINT?.trim() ||
+    process.env.IMAGE_EDIT_ENDPOINT?.trim();
+  const model = getProviderEnv(provider, "IMAGE_MODEL") || process.env.IMAGE_MODEL?.trim() || "gpt-image-2";
+  const referenceModel = getProviderEnv(provider, "REFERENCE_MODEL") || process.env.IMAGE_REFERENCE_MODEL?.trim() || model;
+  const referenceImageField = getProviderEnv(provider, "REFERENCE_IMAGE_FIELD") || process.env.IMAGE_REFERENCE_IMAGE_FIELD?.trim() || preset?.referenceImageField || "image";
+  const referenceQuality = getProviderEnv(provider, "REFERENCE_QUALITY") || process.env.IMAGE_REFERENCE_QUALITY?.trim() || preset?.referenceQuality || "2k";
 
   if (!apiKey || !apiEndpoint || !model || !referenceModel) {
     throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
@@ -55,6 +103,7 @@ function getConfig(): GenerateConfig {
   try {
     if (!referenceEndpoint) {
       return {
+        provider,
         apiKey,
         apiEndpoint: endpointUrl.href,
         referenceEndpoint: "",
@@ -66,15 +115,12 @@ function getConfig(): GenerateConfig {
       };
     }
     const referenceUrl = new URL(referenceEndpoint);
-    const pathname = referenceUrl.pathname.replace(/\/+$/, "");
-    const referenceEndpointKind: ReferenceEndpointKind = pathname.endsWith("/chat/completions")
-      ? "chat-completions"
-      : "images-edits";
     return {
+      provider,
       apiKey,
       apiEndpoint: endpointUrl.href,
       referenceEndpoint: referenceUrl.href,
-      referenceEndpointKind,
+      referenceEndpointKind: getEndpointKind(referenceUrl.href),
       model,
       referenceModel,
       referenceImageField,
@@ -457,7 +503,16 @@ export async function POST(req: NextRequest) {
     };
 
     const startedAt = Date.now();
-    console.info("[generate] request:", `count=${count}`, `size=${size}`, `quality=${quality}`, `reference=${parsedReferenceImage ? "yes" : "no"}`);
+    console.info(
+      "[generate] request:",
+      `provider=${config.provider}`,
+      `count=${count}`,
+      `size=${size}`,
+      `quality=${quality}`,
+      `reference=${parsedReferenceImage ? "yes" : "no"}`,
+      `apiHost=${new URL(config.apiEndpoint).hostname}`,
+      `referenceHost=${config.referenceEndpoint ? new URL(config.referenceEndpoint).hostname : "none"}`
+    );
 
     // 并发生成 count 张，每次独立请求，兼容所有不支持 n>1 的中转
     const results = await Promise.allSettled(

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ENHANCE_TIMEOUT_MS = 30_000;
+type ProviderName = "tuzi" | "bltcy" | "custom";
+
+const PROVIDER_CHAT_ENDPOINTS: Record<Exclude<ProviderName, "custom">, string> = {
+  tuzi: "https://api.tu-zi.com/v1/chat/completions",
+  bltcy: "https://api.bltcy.ai/v1/chat/completions",
+};
 
 class HttpError extends Error {
   constructor(message: string, public status = 500) {
@@ -8,23 +14,41 @@ class HttpError extends Error {
   }
 }
 
-function getConfig() {
-  const apiKey = process.env.IMAGE_API_KEY?.trim();
-  const imageEndpoint = process.env.IMAGE_API_ENDPOINT?.trim();
-  const model = (process.env.ENHANCE_MODEL ?? "gemini-3.1-flash-lite-preview").trim();
+function getProvider(): ProviderName {
+  const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
+  if (provider === "tuzi" || provider === "bltcy" || provider === "custom") return provider;
+  throw new HttpError(`不支持的图像中转配置：${provider}`, 500);
+}
 
-  if (!apiKey || !imageEndpoint) {
+function getProviderEnv(provider: ProviderName, suffix: string) {
+  if (provider === "custom") return undefined;
+  return process.env[`${provider.toUpperCase()}_${suffix}`]?.trim();
+}
+
+function getConfig() {
+  const provider = getProvider();
+  const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
+  const chatEndpoint =
+    getProviderEnv(provider, "CHAT_ENDPOINT") ||
+    getProviderEnv(provider, "ENHANCE_ENDPOINT") ||
+    (provider === "custom" ? process.env.ENHANCE_API_ENDPOINT?.trim() : PROVIDER_CHAT_ENDPOINTS[provider]);
+  const model = (
+    getProviderEnv(provider, "ENHANCE_MODEL") ||
+    process.env.ENHANCE_MODEL ||
+    "gemini-3.1-flash-lite-preview"
+  ).trim();
+
+  if (!apiKey || !chatEndpoint) {
     throw new HttpError("服务端配置缺失，请检查环境变量", 500);
   }
 
-  let origin: string;
   try {
-    origin = new URL(imageEndpoint).origin;
+    new URL(chatEndpoint);
   } catch {
-    throw new HttpError("IMAGE_API_ENDPOINT 配置无效", 500);
+    throw new HttpError("提示词增强接口地址配置无效", 500);
   }
 
-  return { apiKey, chatEndpoint: `${origin}/v1/chat/completions`, model };
+  return { provider, apiKey, chatEndpoint, model };
 }
 
 const SYSTEM_PROMPT = `你是一位专业的 AI 图像生成提示词专家，专门为 gpt-image-2 模型优化提示词。
@@ -145,7 +169,7 @@ export async function POST(req: NextRequest) {
     }
 
     const rawText = await response.text();
-    console.info("[enhance] upstream status:", response.status);
+    console.info("[enhance] upstream status:", response.status, `provider=${config.provider}`, `apiHost=${new URL(config.chatEndpoint).hostname}`);
 
     if (!response.ok) {
       let message = `API 错误 ${response.status}`;
