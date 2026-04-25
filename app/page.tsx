@@ -12,6 +12,8 @@ type ReferenceImage = {
   thumbnail: string;
   mediaType: string;
   size: number;
+  width: number;
+  height: number;
 };
 type HistoryEntry = {
   id: string;
@@ -132,6 +134,15 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => resolve({ width: 0, height: 0 });
+    img.src = src;
+  });
+}
+
 function formatFileSize(size: number) {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
@@ -141,7 +152,45 @@ function dataUrlToBase64(dataUrl: string) {
   return dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
 }
 
-function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | null, aspect: AspectRatio, quality: Quality) {
+/* ── Smart aspect inference ── */
+const PORTRAIT_KEYWORDS = [
+  '海报', 'poster', '竖版', '竖向', '竖式', '竖幅', '竖型',
+  '手机', '手机壁纸', '手机界面', '手机截图', '竖屏',
+  '封面', '书封', '杂志封面', '杂志',
+  '全身', '人像', '肖像', 'portrait',
+  '传单', '宣传单', '单页', '展架', '易拉宝',
+  '书签', '长图', 'flyer', 'a4', 'a3',
+];
+const LANDSCAPE_KEYWORDS = [
+  '横版', '横向', '横式', '横幅', '横屏', '宽幅',
+  '风景', '全景', 'panorama', 'landscape',
+  '桌面', '桌面壁纸', '电脑壁纸', '电脑屏幕', '显示器',
+  'banner', 'widescreen', '宽屏',
+  '电影', '电影感', '影视', '横幅广告',
+];
+
+type SmartInference = { size: string; aspect: AspectRatio; label: string };
+
+function inferSmartAspect(prompt: string, referenceImage: ReferenceImage | null): SmartInference {
+  // 优先级 1：参考图实际尺寸
+  if (referenceImage && referenceImage.width > 0 && referenceImage.height > 0) {
+    const ratio = referenceImage.width / referenceImage.height;
+    if (ratio > 1.2) return { size: '1536x1024', aspect: '3:2', label: '横版 · 参考图' };
+    if (ratio < 0.83) return { size: '1024x1536', aspect: '2:3', label: '竖版 · 参考图' };
+    return { size: '1024x1024', aspect: '1:1', label: '方形 · 参考图' };
+  }
+  // 优先级 2：关键词语义（竖版优先于横版）
+  const text = prompt.toLowerCase();
+  if (PORTRAIT_KEYWORDS.some(kw => text.includes(kw))) {
+    return { size: '1024x1536', aspect: '2:3', label: '竖版 · 语义推断' };
+  }
+  if (LANDSCAPE_KEYWORDS.some(kw => text.includes(kw))) {
+    return { size: '1536x1024', aspect: '3:2', label: '横版 · 语义推断' };
+  }
+  return { size: '1024x1024', aspect: '1:1', label: '方形 · 默认' };
+}
+
+function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | null, aspect: AspectRatio, quality: Quality, overrideAspect?: AspectRatio) {
   const trimmed = prompt.trim();
   const aspectHint: Record<AspectRatio, string> = {
     auto: "构图自然，主体明确，留白克制",
@@ -149,6 +198,7 @@ function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | nu
     "3:2": "横版构图，空间层次清晰，适合海报和横幅",
     "2:3": "竖版构图，纵深感明确，适合封面和手机屏幕",
   };
+  const effectiveAspect = overrideAspect ?? aspect;
   const qualityHint: Record<Quality, string> = {
     low: "快速概念草图，保留主要视觉方向",
     medium: "完整视觉细节，质感清楚，完成度较高",
@@ -161,7 +211,7 @@ function buildEnhancedPrompt(prompt: string, referenceImage: ReferenceImage | nu
   return [
     trimmed,
     referenceHint,
-    aspectHint[aspect],
+    aspectHint[effectiveAspect],
     qualityHint[quality],
     "避免杂乱元素，避免多余文字，画面干净，边缘细节自然",
   ].filter(Boolean).join("，");
@@ -280,6 +330,7 @@ export default function HomePage() {
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
+  const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -355,13 +406,18 @@ export default function HomePage() {
 
     try {
       const dataUrl = await readFileAsDataUrl(file);
-      const thumbnail = await createThumbnail(dataUrl, 320);
+      const [thumbnail, dims] = await Promise.all([
+        createThumbnail(dataUrl, 320),
+        getImageDimensions(dataUrl),
+      ]);
       setReferenceImage({
         name: file.name,
         dataUrl,
         thumbnail: thumbnail || dataUrl,
         mediaType: file.type,
         size: file.size,
+        width: dims.width,
+        height: dims.height,
       });
       showToast("参考图已加入");
     } catch (err) {
@@ -377,17 +433,24 @@ export default function HomePage() {
       showToast("先输入一句提示词");
       return;
     }
-    setPrompt(buildEnhancedPrompt(prompt, referenceImage, aspect, quality));
+    const overrideAspect = aspect === "auto" ? inferSmartAspect(prompt, referenceImage).aspect : undefined;
+    setPrompt(buildEnhancedPrompt(prompt, referenceImage, aspect, quality, overrideAspect));
     showToast("提示词已增强");
   }, [prompt, referenceImage, aspect, quality, showToast]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
+
+    // 计算本次生成使用的实际尺寸（auto 模式做语义推断）
+    const inference = aspect === "auto" ? inferSmartAspect(prompt, referenceImage) : null;
+    const effectiveSize = inference ? inference.size : selectedAspect.size;
+    const effectiveAspect: AspectRatio = inference ? inference.aspect : aspect;
+
     generateControllerRef.current?.abort();
     const controller = new AbortController();
     generateControllerRef.current = controller;
     const generationPrompt = referenceImage
-      ? (prompt.includes(referenceImage.name) ? prompt : buildEnhancedPrompt(prompt, referenceImage, aspect, quality))
+      ? (prompt.includes(referenceImage.name) ? prompt : buildEnhancedPrompt(prompt, referenceImage, aspect, quality, effectiveAspect))
       : prompt;
 
     setLoading(true);
@@ -395,6 +458,7 @@ export default function HomePage() {
     setImages([]);
     setElapsed(0);
     setShowPromptHistory(false);
+    setDisplayAspect(effectiveAspect);
 
     const start = Date.now();
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
@@ -405,7 +469,7 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: generationPrompt,
-          size: selectedAspect.size,
+          size: effectiveSize,
           quality,
           n: count,
           referenceImage: referenceImage
@@ -728,7 +792,18 @@ export default function HomePage() {
 
             {/* Aspect Ratio */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+                {aspect === "auto" && (() => {
+                  const inf = inferSmartAspect(prompt, referenceImage);
+                  const isDefault = inf.aspect === "1:1" && !referenceImage && !prompt.trim();
+                  return !isDefault ? (
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
+                      → {inf.label}
+                    </span>
+                  ) : null;
+                })()}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
                 {ASPECT_OPTIONS.map(opt => {
                   const active = aspect === opt.value;
@@ -891,7 +966,7 @@ export default function HomePage() {
                 {Array.from({ length: count }).map((_, i) => (
                   <GeneratingPreviewCard
                     key={i}
-                    aspect={aspect}
+                    aspect={displayAspect}
                     index={i}
                     elapsed={elapsed}
                     dark={dark}
@@ -934,7 +1009,7 @@ export default function HomePage() {
                   <div
                     key={img.b64 ? img.b64.slice(0, 16) : (img.url ?? String(i))}
                     className="img-card"
-                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[aspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
+                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[displayAspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}

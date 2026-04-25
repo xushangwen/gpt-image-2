@@ -8,7 +8,7 @@ type ReferenceImageInput = {
   name?: string;
 };
 
-const ALLOWED_SIZES = new Set(["auto", "1024x1024", "1536x1024", "1024x1536"]);
+const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
