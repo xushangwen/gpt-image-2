@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Noto_Sans_SC } from "next/font/google";
-import "remixicon/fonts/remixicon.css";
 import "./globals.css";
+import "remixicon/fonts/remixicon.css";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],

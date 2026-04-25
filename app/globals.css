@@ -2,38 +2,41 @@
 
 /* ── 暗色主题（默认）── */
 :root {
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --surface-2: #1a1a1a;
-  --border: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(255, 255, 255, 0.24);
-  --text-primary: #f0f0f0;
-  --text-secondary: #888;
-  --text-muted: #444;
-  --accent: #ff6524;
-  --accent-dim: rgba(255, 101, 36, 0.12);
+  --bg: #080808;
+  --surface: #0f0f0f;
+  --surface-2: #171717;
+  --surface-3: #202020;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-focus: rgba(255, 255, 255, 0.2);
+  --text-primary: #efefef;
+  --text-secondary: #7a7a7a;
+  --text-muted: #383838;
+  --accent: #ffffff;
+  --accent-dim: rgba(255, 255, 255, 0.07);
+  --accent-glow: rgba(255, 255, 255, 0.06);
+  --btn-text: #000000;
 }
 
 /* ── 亮色主题 ── */
 :root[data-theme="light"] {
-  --bg: #f7f6f4;
+  --bg: #f5f4f2;
   --surface: #ffffff;
-  --surface-2: #f0eeeb;
-  --border: rgba(0, 0, 0, 0.08);
-  --border-focus: rgba(0, 0, 0, 0.22);
+  --surface-2: #edecea;
+  --surface-3: #e3e1de;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-focus: rgba(0, 0, 0, 0.18);
   --text-primary: #111111;
   --text-secondary: #555555;
   --text-muted: #aaaaaa;
-  --accent: #ff6524;
-  --accent-dim: rgba(255, 101, 36, 0.1);
+  --accent: #111111;
+  --accent-dim: rgba(0, 0, 0, 0.06);
+  --accent-glow: rgba(0, 0, 0, 0.05);
+  --btn-text: #ffffff;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text-primary);
@@ -42,18 +45,46 @@ body {
   transition: background 0.2s, color 0.2s;
 }
 
-::selection {
-  background: var(--accent);
-  color: #fff;
+::selection { background: var(--accent); color: #fff; }
+
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 2px; }
+
+/* ── Animations ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-::-webkit-scrollbar {
-  width: 4px;
+/* ── Image card hover ── */
+.img-card .img-overlay { opacity: 0; transition: opacity 0.2s; }
+.img-card:hover .img-overlay { opacity: 1; }
+
+/* ── History item hover ── */
+.history-item .delete-btn { opacity: 0; transition: opacity 0.15s; }
+.history-item:hover .delete-btn { opacity: 1; }
+
+/* ── Action buttons hover ── */
+.action-btn:hover {
+  border-color: var(--border-focus) !important;
+  color: var(--text-primary) !important;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-focus);
-  border-radius: 2px;
+
+/* ── Theme toggle hover ── */
+.theme-btn:hover {
+  border-color: var(--border-focus) !important;
+  color: var(--text-primary) !important;
 }

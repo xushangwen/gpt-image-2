@@ -2,26 +2,41 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 
+/* ── Types ── */
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
 type Quality = "low" | "medium" | "high";
 type ImageResult = { b64?: string; url?: string; mediaType: string };
+type HistoryEntry = {
+  id: string;
+  prompt: string;
+  aspect: AspectRatio;
+  quality: Quality;
+  count: number;
+  timestamp: number;
+  thumbnail: string;
+  imageCount: number;
+};
 
+/* ── Constants ── */
 const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: string }[] = [
-  { label: "自动", value: "auto", size: "auto", icon: "ri-magic-line" },
-  { label: "方形", value: "1:1", size: "1024x1024", icon: "ri-square-line" },
-  { label: "横版", value: "3:2", size: "1536x1024", icon: "ri-rectangle-line" },
-  { label: "竖版", value: "2:3", size: "1024x1536", icon: "ri-layout-column-line" },
+  { label: "自动", value: "auto",  size: "auto",      icon: "ri-fullscreen-line" },
+  { label: "方形", value: "1:1",   size: "1024x1024", icon: "ri-checkbox-blank-line" },
+  { label: "横版", value: "3:2",   size: "1536x1024", icon: "ri-image-line" },
+  { label: "竖版", value: "2:3",   size: "1024x1536", icon: "ri-smartphone-line" },
 ];
 
-const QUALITY_OPTIONS: { label: string; value: Quality }[] = [
-  { label: "低", value: "low" },
-  { label: "中", value: "medium" },
-  { label: "高", value: "high" },
+const QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
+  { label: "低", value: "low",    icon: "ri-signal-wifi-1-fill" },
+  { label: "中", value: "medium", icon: "ri-signal-wifi-2-fill" },
+  { label: "高", value: "high",   icon: "ri-signal-wifi-3-fill" },
 ];
 
-const COUNT_OPTIONS = [1, 2, 4];
+const COUNT_OPTIONS: { n: number; icon: string }[] = [
+  { n: 1, icon: "ri-layout-fill" },
+  { n: 2, icon: "ri-layout-2-fill" },
+  { n: 4, icon: "ri-grid-fill" },
+];
 
-// aspectRatio → CSS aspect-ratio 值，用于固定预览卡片比例
 const CARD_ASPECT: Record<AspectRatio, string> = {
   auto: "1 / 1",
   "1:1": "1 / 1",
@@ -29,36 +44,139 @@ const CARD_ASPECT: Record<AspectRatio, string> = {
   "2:3": "2 / 3",
 };
 
+const LS_HISTORY = "imagegen_history_v2";
+const LS_PROMPTS = "imagegen_prompts_v2";
+const MAX_HISTORY = 20;
+const MAX_PROMPTS = 15;
+
+/* ── Utils ── */
 function imageSrc(img: ImageResult) {
   return img.b64 ? `data:${img.mediaType};base64,${img.b64}` : img.url!;
 }
 
 function downloadImage(img: ImageResult, index: number) {
-  const src = imageSrc(img);
   const el = new Image();
   el.onload = () => {
     const canvas = document.createElement("canvas");
     canvas.width = el.naturalWidth;
     canvas.height = el.naturalHeight;
     canvas.getContext("2d")!.drawImage(el, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `imagegen-${Date.now()}-${index + 1}.jpg`;
-        a.click();
-        URL.revokeObjectURL(url);
-      },
-      "image/jpeg",
-      0.95
-    );
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `imagegen-${Date.now()}-${index + 1}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/jpeg", 0.95);
   };
   el.crossOrigin = "anonymous";
-  el.src = src;
+  el.src = imageSrc(img);
 }
 
+function createThumbnail(src: string, maxW = 200): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const ratio = img.naturalHeight / img.naturalWidth;
+      const w = Math.min(maxW, img.naturalWidth);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = Math.round(w * ratio);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.5));
+    };
+    img.onerror = () => resolve("");
+    img.src = src;
+  });
+}
+
+function loadHistory(): HistoryEntry[] {
+  try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]"); } catch { return []; }
+}
+function saveHistory(entries: HistoryEntry[]) {
+  try { localStorage.setItem(LS_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY))); } catch { /* quota */ }
+}
+function loadPrompts(): string[] {
+  try { return JSON.parse(localStorage.getItem(LS_PROMPTS) ?? "[]"); } catch { return []; }
+}
+function savePrompts(prompts: string[]) {
+  try { localStorage.setItem(LS_PROMPTS, JSON.stringify(prompts.slice(0, MAX_PROMPTS))); } catch { /* quota */ }
+}
+
+function formatTime(ts: number): string {
+  const diff = (Date.now() - ts) / 1000;
+  if (diff < 60) return "刚刚";
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
+  return `${Math.floor(diff / 86400)}天前`;
+}
+
+/* ── Shared button styles ── */
+const overlayBtnStyle: React.CSSProperties = {
+  padding: "5px 9px",
+  borderRadius: 7,
+  border: "none",
+  background: "rgba(0,0,0,0.52)",
+  color: "#fff",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  backdropFilter: "blur(8px)",
+  gap: 5,
+  fontSize: 12,
+};
+
+const actionBtnStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  padding: "8px 16px",
+  borderRadius: 9,
+  border: "1px solid var(--border)",
+  background: "transparent",
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  fontSize: 13,
+  transition: "all 0.15s",
+};
+
+const lightboxBtnStyle: React.CSSProperties = {
+  width: 40,
+  height: 40,
+  borderRadius: 10,
+  border: "none",
+  background: "rgba(255,255,255,0.1)",
+  color: "#fff",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  backdropFilter: "blur(8px)",
+};
+
+const lightboxNavStyle: React.CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  transform: "translateY(-50%)",
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  border: "none",
+  background: "rgba(255,255,255,0.08)",
+  color: "#fff",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  backdropFilter: "blur(8px)",
+  zIndex: 10,
+  transition: "opacity 0.15s, background 0.15s",
+};
+
+/* ── Main Component ── */
 export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [aspect, setAspect] = useState<AspectRatio>("auto");
@@ -69,37 +187,70 @@ export default function HomePage() {
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
-  const [lightbox, setLightbox] = useState<{ img: ImageResult; index: number } | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
+  const [showPromptHistory, setShowPromptHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; id: number } | null>(null);
+  const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
 
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+
+  /* Load from localStorage */
+  useEffect(() => {
+    setHistory(loadHistory());
+    setRecentPrompts(loadPrompts());
+  }, []);
+
+  /* Theme */
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
   }, [dark]);
 
-  // ESC 关闭 lightbox
+  /* Keyboard: ESC / arrows for lightbox */
   useEffect(() => {
-    if (!lightbox) return;
+    if (lightboxIdx === null) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightbox(null);
+      if (e.key === "Escape") setLightboxIdx(null);
+      if (e.key === "ArrowLeft") setLightboxIdx(i => i !== null ? Math.max(0, i - 1) : null);
+      if (e.key === "ArrowRight") setLightboxIdx(i => i !== null ? Math.min(images.length - 1, i + 1) : null);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [lightbox]);
+  }, [lightboxIdx, images.length]);
 
-  const selectedAspect = ASPECT_OPTIONS.find((o) => o.value === aspect)!;
+  /* Close prompt history on outside click */
+  useEffect(() => {
+    if (!showPromptHistory) return;
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as Element).closest(".prompt-area")) setShowPromptHistory(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showPromptHistory]);
+
+  const showToast = useCallback((msg: string) => {
+    const id = Date.now();
+    setToast({ msg, id });
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const selectedAspect = ASPECT_OPTIONS.find(o => o.value === aspect)!;
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
-
     setLoading(true);
     setError(null);
     setImages([]);
     setElapsed(0);
+    setShowPromptHistory(false);
 
     const start = Date.now();
-    timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
 
     try {
       const res = await fetch("/api/generate", {
@@ -110,449 +261,541 @@ export default function HomePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成失败，请重试");
       if (!data.images?.length) throw new Error("未收到图片数据");
-      setImages(data.images);
+
+      const newImages: ImageResult[] = data.images;
+      setImages(newImages);
+
+      /* Save to history */
+      const thumbnail = await createThumbnail(imageSrc(newImages[0]));
+      const entry: HistoryEntry = {
+        id: String(Date.now()),
+        prompt: prompt.trim(),
+        aspect,
+        quality,
+        count,
+        timestamp: Date.now(),
+        thumbnail,
+        imageCount: newImages.length,
+      };
+      const newHistory = [entry, ...loadHistory()].slice(0, MAX_HISTORY);
+      saveHistory(newHistory);
+      setHistory(newHistory);
+
+      /* Save prompt */
+      const trimmed = prompt.trim();
+      const newPrompts = [trimmed, ...loadPrompts().filter(p => p !== trimmed)].slice(0, MAX_PROMPTS);
+      savePrompts(newPrompts);
+      setRecentPrompts(newPrompts);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
       setLoading(false);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count]);
+  }, [prompt, loading, selectedAspect.size, quality, count, aspect]);
 
-  const clearImages = () => {
-    setImages([]);
-    setError(null);
+  const clearImages = () => { setImages([]); setError(null); };
+
+  const downloadAll = () => {
+    images.forEach((img, i) => setTimeout(() => downloadImage(img, i), i * 400));
+    showToast(`正在下载 ${images.length} 张图片`);
   };
 
-  const btnBase: React.CSSProperties = { borderColor: "var(--border)", color: "var(--text-secondary)" };
-  const btnHover = (e: React.MouseEvent<HTMLButtonElement>) => {
-    (e.currentTarget as HTMLElement).style.borderColor = "var(--border-focus)";
-    (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+  const copyImageToClipboard = useCallback(async (img: ImageResult, idx: number) => {
+    setCopyingIdx(idx);
+    try {
+      const image = new Image();
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = reject;
+        image.src = imageSrc(img);
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      canvas.getContext("2d")!.drawImage(image, 0, 0);
+      const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, "image/png"));
+      if (!blob) throw new Error();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      showToast("已复制到剪贴板");
+    } catch {
+      showToast("复制失败，请手动保存图片");
+    } finally {
+      setCopyingIdx(null);
+    }
+  }, [showToast]);
+
+  const restoreHistory = (entry: HistoryEntry) => {
+    setPrompt(entry.prompt);
+    setAspect(entry.aspect);
+    setQuality(entry.quality);
+    setCount(entry.count);
+    clearImages();
+    promptRef.current?.focus();
   };
-  const btnLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-    (e.currentTarget as HTMLElement).style.color = "var(--text-secondary)";
+
+  const deleteHistoryEntry = (id: string) => {
+    const next = history.filter(h => h.id !== id);
+    saveHistory(next);
+    setHistory(next);
   };
+
+  const clearAllHistory = () => { saveHistory([]); setHistory([]); };
+
+  /* Segmented control style */
+  const segBtn = (active: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: "7px 0",
+    fontSize: 12,
+    fontWeight: active ? 500 : 400,
+    border: "none",
+    borderLeft: "1px solid var(--border)",
+    background: active ? "var(--accent-dim)" : "transparent",
+    color: active ? "var(--accent)" : "var(--text-secondary)",
+    cursor: "pointer",
+    transition: "all 0.15s",
+  });
 
   return (
-    <div className="min-h-full flex flex-col" style={{ background: "var(--bg)" }}>
-      {/* Header */}
-      <header
-        className="flex items-center justify-between px-6 py-4 border-b"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div className="flex items-center gap-2.5">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--accent)" }}
-          >
-            <i className="ri-image-ai-line text-sm text-white" />
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
+
+      {/* ── Header ── */}
+      <header style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 20px",
+        height: 50,
+        borderBottom: "1px solid var(--border)",
+        background: "var(--surface)",
+        flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <i className="ri-magic-fill" style={{ fontSize: 14, lineHeight: 1, color: "var(--bg)" }} />
           </div>
-          <span
-            className="text-base font-semibold tracking-tight"
-            style={{ color: "var(--text-primary)", fontFamily: "var(--font-space)" }}
-          >
+          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
             ImageGen
           </span>
-          <span
-            className="text-xs px-2 py-0.5 rounded-full border"
-            style={{
-              color: "var(--accent)",
-              borderColor: "var(--accent-dim)",
-              background: "var(--accent-dim)",
-              fontFamily: "var(--font-space)",
-            }}
-          >
+          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 20, border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
             GPT-Image-2
           </span>
         </div>
-
-        <div className="flex items-center gap-4">
-          <span
-            className="text-xs tracking-widest uppercase"
-            style={{ color: "var(--text-muted)", fontFamily: "var(--font-space)" }}
-          >
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
             QY.Studio
           </span>
           <button
-            onClick={() => setDark((d) => !d)}
-            className="w-8 h-8 rounded-lg border flex items-center justify-center transition-all"
-            style={btnBase}
-            onMouseEnter={btnHover}
-            onMouseLeave={btnLeave}
+            className="theme-btn"
+            onClick={() => setDark(d => !d)}
+            style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}
             title={dark ? "切换亮色" : "切换暗色"}
           >
-            <i className={dark ? "ri-sun-line text-sm" : "ri-moon-line text-sm"} />
+            <i className={dark ? "ri-sun-line" : "ri-moon-line"} style={{ fontSize: 16, lineHeight: 1 }} />
           </button>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
-        {/* 左栏：控制面板 */}
-        <aside
-          className="w-72 flex-shrink-0 flex flex-col border-r overflow-y-auto"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-        >
-          <div className="flex-1 p-5 flex flex-col gap-5">
-            {/* 提示词 */}
-            <div className="flex flex-col gap-2">
-              <label
-                className="text-xs font-medium tracking-wider uppercase"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                提示词
-              </label>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate();
-                }}
-                placeholder="描述你想生成的图像..."
-                rows={6}
-                className="w-full resize-none rounded-lg px-3 py-3 text-sm outline-none transition-all"
-                style={{
-                  background: "var(--surface-2)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-primary)",
-                  fontFamily: "var(--font-ibm), system-ui",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-focus)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-              />
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* ── Left Sidebar ── */}
+        <aside style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+            {/* Prompt */}
+            <div className="prompt-area" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <SideLabel icon="ri-pencil-line">提示词</SideLabel>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{prompt.length}</span>
+              </div>
+              <div style={{ position: "relative" }}>
+                <textarea
+                  ref={promptRef}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+                  onFocus={e => {
+                    e.target.style.borderColor = "var(--border-focus)";
+                    if (recentPrompts.length > 0) setShowPromptHistory(true);
+                  }}
+                  onBlur={e => e.target.style.borderColor = "var(--border)"}
+                  placeholder="描述你想生成的图像..."
+                  rows={6}
+                  style={{ width: "100%", resize: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-ibm), system-ui", transition: "border-color 0.15s" }}
+                />
+
+                {/* Prompt history dropdown */}
+                {showPromptHistory && recentPrompts.length > 0 && (
+                  <div style={{ position: "absolute", top: "calc(100% + 5px)", left: 0, right: 0, borderRadius: 10, border: "1px solid var(--border-focus)", background: "var(--surface)", boxShadow: "0 10px 30px rgba(0,0,0,0.25)", zIndex: 20, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+                    <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
+                      </span>
+                      <button
+                        onMouseDown={e => { e.preventDefault(); savePrompts([]); setRecentPrompts([]); setShowPromptHistory(false); }}
+                        style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                      >
+                        清空
+                      </button>
+                    </div>
+                    {recentPrompts.map((p, i) => (
+                      <button
+                        key={i}
+                        onMouseDown={e => { e.preventDefault(); setPrompt(p); setShowPromptHistory(false); promptRef.current?.focus(); }}
+                        style={{ width: "100%", padding: "8px 12px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", transition: "background 0.1s" }}
+                        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* 尺寸 */}
-            <div className="flex flex-col gap-2">
-              <label
-                className="text-xs font-medium tracking-wider uppercase"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                尺寸
-              </label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {ASPECT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      setAspect(opt.value);
-                      clearImages();
-                    }}
-                    className="flex flex-col items-center gap-1.5 py-2.5 rounded-lg border text-xs transition-all"
-                    style={{
-                      background: aspect === opt.value ? "var(--accent-dim)" : "var(--surface-2)",
-                      borderColor: aspect === opt.value ? "var(--accent)" : "var(--border)",
-                      color: aspect === opt.value ? "var(--accent)" : "var(--text-secondary)",
-                    }}
-                  >
-                    <i className={`${opt.icon} text-sm`} />
-                    {opt.label}
+            {/* Aspect Ratio */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                {ASPECT_OPTIONS.map(opt => {
+                  const active = aspect === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setAspect(opt.value); clearImages(); }}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                    >
+                      <i className={opt.icon} style={{ fontSize: 16, lineHeight: 1 }} />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quality */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <SideLabel icon="ri-hd-line">画质</SideLabel>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                {QUALITY_OPTIONS.map((opt, i) => (
+                  <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 质量 */}
-            <div className="flex flex-col gap-2">
-              <label
-                className="text-xs font-medium tracking-wider uppercase"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                质量
-              </label>
-              <div className="flex gap-1.5">
-                {QUALITY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setQuality(opt.value)}
-                    className="flex-1 py-2 rounded-lg border text-xs transition-all"
-                    style={{
-                      background: quality === opt.value ? "var(--accent-dim)" : "var(--surface-2)",
-                      borderColor: quality === opt.value ? "var(--accent)" : "var(--border)",
-                      color: quality === opt.value ? "var(--accent)" : "var(--text-secondary)",
-                    }}
-                  >
-                    {opt.label}
+            {/* Count */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <SideLabel icon="ri-apps-line">生成数量</SideLabel>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                {COUNT_OPTIONS.map((opt, i) => (
+                  <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.n}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 张数 */}
-            <div className="flex flex-col gap-2">
-              <label
-                className="text-xs font-medium tracking-wider uppercase"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                张数
-              </label>
-              <div className="flex gap-1.5">
-                {COUNT_OPTIONS.map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setCount(n)}
-                    className="flex-1 py-2 rounded-lg border text-xs transition-all"
-                    style={{
-                      background: count === n ? "var(--accent-dim)" : "var(--surface-2)",
-                      borderColor: count === n ? "var(--accent)" : "var(--border)",
-                      color: count === n ? "var(--accent)" : "var(--text-secondary)",
-                    }}
-                  >
-                    {n} 张
-                  </button>
-                ))}
+            {/* History */}
+            {history.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <button
+                  onClick={() => setShowHistory(h => !h)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
+                    <i className="ri-history-line" style={{ fontSize: 14, lineHeight: 1 }} /> 历史 ({history.length})
+                  </span>
+                  <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
+                </button>
+
+                {showHistory && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {history.slice(0, 10).map(entry => (
+                      <div
+                        key={entry.id}
+                        className="history-item"
+                        style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
+                        onClick={() => restoreHistory(entry)}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-focus)")}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                      >
+                        {entry.thumbnail && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={entry.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>{entry.prompt}</p>
+                          <p style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatTime(entry.timestamp)} · {entry.imageCount} 张</p>
+                        </div>
+                        <button
+                          className="delete-btn"
+                          onClick={e => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
+                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3, flexShrink: 0 }}
+                        >
+                          <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
+                        </button>
+                      </div>
+                    ))}
+                    {history.length > 10 && (
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
+                        +{history.length - 10} 条更多
+                      </p>
+                    )}
+                    <button
+                      onClick={clearAllHistory}
+                      style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "3px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+                    >
+                      <i className="ri-delete-bin-6-line" style={{ fontSize: 14, lineHeight: 1 }} /> 清空历史
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </div>
 
-          {/* 生成按钮 */}
-          <div className="p-5 border-t" style={{ borderColor: "var(--border)" }}>
+          {/* Generate Button */}
+          <div style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
             <button
               onClick={handleGenerate}
               disabled={!prompt.trim() || loading}
-              className="w-full py-3 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2"
               style={{
-                background: !prompt.trim() || loading ? "var(--surface-2)" : "var(--accent)",
-                color: !prompt.trim() || loading ? "var(--text-muted)" : "#fff",
+                width: "100%",
+                padding: "11px 0",
+                borderRadius: 10,
+                fontSize: 14,
+                fontWeight: 500,
+                border: "none",
                 cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
+                background: !prompt.trim() || loading ? "var(--surface-2)" : "var(--accent)",
+                color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                transition: "all 0.15s",
+                boxShadow: !prompt.trim() || loading ? "none" : "0 4px 20px var(--accent-glow)",
               }}
             >
               {loading ? (
                 <>
-                  <i className="ri-loader-4-line animate-spin" />
-                  生成中{elapsed !== null ? `（${elapsed}s）` : ""}
+                  <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                  生成中{elapsed !== null ? ` · ${elapsed}s` : ""}
                 </>
               ) : (
                 <>
-                  <i className="ri-sparkling-line" />
+                  <i className="ri-magic-fill" style={{ fontSize: 16, lineHeight: 1 }} />
                   生成图像
-                  <span className="text-xs opacity-40 ml-1">⌘↵</span>
+                  <span style={{ fontSize: 11, opacity: 0.45, marginLeft: 2 }}>⌘↵</span>
                 </>
               )}
             </button>
           </div>
         </aside>
 
-        {/* 右栏：预览区 */}
-        <section className="flex-1 flex flex-col items-center justify-center p-8 overflow-auto gap-6">
-          {/* 加载状态 */}
+        {/* ── Main Preview Area ── */}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, overflow: "auto", gap: 22 }}>
+
+          {/* Loading skeleton */}
           {loading && (
-            <div className="flex flex-col items-center gap-3">
-              <div
-                className="w-11 h-11 rounded-full border-2 animate-spin"
-                style={{ borderColor: "var(--border)", borderTopColor: "var(--accent)" }}
-              />
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                正在生成{elapsed !== null ? ` · ${elapsed}s` : ""}
-              </p>
-              {elapsed !== null && elapsed >= 60 && (
-                <div
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-xs"
-                  style={{
-                    borderColor: "rgba(255,180,0,0.3)",
-                    background: "rgba(255,180,0,0.06)",
-                    color: "#ffb400",
-                  }}
-                >
-                  <i className="ri-time-line" />
-                  已超过 60s，生成可能出现问题，完成后可尝试重新生成
-                </div>
-              )}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}>
+              <div style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 700 : 460 }}>
+                {Array.from({ length: count }).map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      aspectRatio: CARD_ASPECT[aspect],
+                      borderRadius: 14,
+                      border: "1px solid var(--border)",
+                      background: "linear-gradient(90deg, var(--surface) 25%, var(--surface-3) 50%, var(--surface) 75%)",
+                      backgroundSize: "200% 100%",
+                      animation: `shimmer 1.6s ease-in-out ${i * 0.15}s infinite`,
+                    }}
+                  />
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>正在生成{elapsed !== null ? ` · ${elapsed}s` : ""}</p>
+                {elapsed !== null && elapsed >= 60 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,180,0,0.22)", background: "rgba(255,180,0,0.05)", fontSize: 12, color: "#ffb400" }}>
+                    <i className="ri-alert-line" style={{ fontSize: 14, lineHeight: 1 }} /> 超过 60s，完成后可尝试重新生成
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* 错误状态 */}
+          {/* Error */}
           {error && !loading && (
-            <div
-              className="flex flex-col items-center gap-3 max-w-sm text-center p-6 rounded-xl border"
-              style={{ background: "var(--surface)", borderColor: "rgba(255,80,80,0.15)" }}
-            >
-              <i className="ri-error-warning-line text-2xl" style={{ color: "#ff6060" }} />
-              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                {error}
-              </p>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "28px 32px", borderRadius: 16, border: "1px solid var(--border-focus)", background: "var(--surface)", maxWidth: 360, textAlign: "center" }}>
+              <i className="ri-error-warning-line" style={{ fontSize: 22, lineHeight: 1, color: "var(--text-secondary)" }} />
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.65 }}>{error}</p>
               <button
+                className="action-btn"
                 onClick={handleGenerate}
-                className="text-xs px-4 py-2 rounded-lg border transition-all"
-                style={btnBase}
-                onMouseEnter={btnHover}
-                onMouseLeave={btnLeave}
+                style={{ ...actionBtnStyle, fontSize: 12, padding: "6px 16px" }}
               >
-                重试
+                <i className="ri-refresh-line" style={{ fontSize: 14, lineHeight: 1 }} /> 重试
               </button>
             </div>
           )}
 
-          {/* 图片结果 */}
+          {/* Results */}
           {images.length > 0 && !loading && (
             <>
               <div
-                className={`w-full grid gap-4 ${images.length > 1 ? "grid-cols-2 max-w-3xl" : "grid-cols-1 max-w-xl"}`}
+                style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 700 : 460 }}
               >
                 {images.map((img, i) => (
                   <div
                     key={i}
-                    className="group relative rounded-xl overflow-hidden border cursor-zoom-in"
-                    style={{
-                      borderColor: "var(--border)",
-                      background: "var(--surface-2)",
-                      aspectRatio: CARD_ASPECT[aspect],
-                    }}
-                    onClick={() => setLightbox({ img, index: i })}
+                    className="img-card"
+                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[aspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
+                    onClick={() => setLightboxIdx(i)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imageSrc(img)}
-                      alt={`${prompt} ${i + 1}`}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "contain",
-                        display: "block",
-                      }}
-                    />
-                    {/* hover 操作层 */}
+                    <img src={imageSrc(img)} alt={`${prompt} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                     <div
-                      className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end gap-2 p-3"
-                      style={{
-                        background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 55%)",
-                      }}
+                      className="img-overlay"
+                      style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", gap: 5, padding: 10, background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)" }}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          downloadImage(img, i);
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                        style={{
-                          background: "rgba(0,0,0,0.6)",
-                          color: "#fff",
-                          backdropFilter: "blur(6px)",
-                        }}
-                      >
-                        <i className="ri-download-2-line" />
-                        下载
+                      <button onClick={e => { e.stopPropagation(); copyImageToClipboard(img, i); }} style={overlayBtnStyle} title="复制">
+                        {copyingIdx === i
+                          ? <i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                          : <i className="ri-file-copy-line" style={{ fontSize: 14, lineHeight: 1 }} />
+                        }
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLightbox({ img, index: i });
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                        style={{
-                          background: "rgba(0,0,0,0.6)",
-                          color: "#fff",
-                          backdropFilter: "blur(6px)",
-                        }}
-                      >
-                        <i className="ri-zoom-in-line" />
-                        放大
+                      <button onClick={e => { e.stopPropagation(); downloadImage(img, i); }} style={overlayBtnStyle} title="下载">
+                        <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} />
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); setLightboxIdx(i); }} style={overlayBtnStyle} title="放大">
+                        <i className="ri-zoom-in-line" style={{ fontSize: 14, lineHeight: 1 }} />
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* 操作栏 */}
-              <div className="flex items-center gap-3">
-                {images.length === 1 && (
-                  <button
-                    onClick={() => downloadImage(images[0], 0)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all"
-                    style={btnBase}
-                    onMouseEnter={btnHover}
-                    onMouseLeave={btnLeave}
-                  >
-                    <i className="ri-download-2-line" />
-                    下载 JPEG
+              {/* Action bar */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {images.length > 1 && (
+                  <button className="action-btn" onClick={downloadAll} style={actionBtnStyle}>
+                    <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载全部
                   </button>
                 )}
-                <button
-                  onClick={handleGenerate}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border text-sm transition-all"
-                  style={btnBase}
-                  onMouseEnter={btnHover}
-                  onMouseLeave={btnLeave}
-                >
-                  <i className="ri-refresh-line" />
-                  重新生成
+                {images.length === 1 && (
+                  <button className="action-btn" onClick={() => downloadImage(images[0], 0)} style={actionBtnStyle}>
+                    <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载 JPEG
+                  </button>
+                )}
+                {images.length === 1 && (
+                  <button className="action-btn" onClick={() => copyImageToClipboard(images[0], 0)} style={actionBtnStyle}>
+                    {copyingIdx === 0
+                      ? <i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                      : <i className="ri-file-copy-line" style={{ fontSize: 14, lineHeight: 1 }} />
+                    }
+                    复制图片
+                  </button>
+                )}
+                <button className="action-btn" onClick={handleGenerate} style={actionBtnStyle}>
+                  <i className="ri-refresh-line" style={{ fontSize: 14, lineHeight: 1 }} /> 重新生成
                 </button>
               </div>
             </>
           )}
 
-          {/* 空状态 */}
+          {/* Empty state */}
           {images.length === 0 && !loading && !error && (
-            <div className="flex flex-col items-center gap-3 select-none">
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                style={{ background: "var(--surface-2)" }}
-              >
-                <i className="ri-image-ai-line text-2xl" style={{ color: "var(--text-muted)" }} />
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, userSelect: "none", animation: "fadeIn 0.4s ease" }}>
+              <div style={{ width: 60, height: 60, borderRadius: 16, background: "var(--surface-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <i className="ri-image-ai-line" style={{ fontSize: 28, lineHeight: 1, color: "var(--text-muted)" }} />
               </div>
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                在左侧输入提示词，开始生成
-              </p>
+              <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5 }}>
+                <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>在左侧输入提示词，开始生成</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>支持中英文描述 · <kbd style={{ fontFamily: "var(--font-space)", fontSize: 11, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>⌘↵</kbd> 快速生成</p>
+              </div>
             </div>
           )}
-        </section>
-      </main>
+        </main>
+      </div>
 
-      {/* Lightbox 大图预览 */}
-      {lightbox && (
+      {/* ── Lightbox ── */}
+      {lightboxIdx !== null && images[lightboxIdx] && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-6"
-          style={{ background: "rgba(0,0,0,0.88)", backdropFilter: "blur(10px)" }}
-          onClick={() => setLightbox(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(14px)", animation: "fadeIn 0.15s ease" }}
+          onClick={() => setLightboxIdx(null)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={imageSrc(lightbox.img)}
+            src={imageSrc(images[lightboxIdx])}
             alt="大图预览"
-            style={{
-              maxWidth: "90vw",
-              maxHeight: "90vh",
-              objectFit: "contain",
-              borderRadius: "12px",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
-            }}
-            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 14, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
+            onClick={e => e.stopPropagation()}
           />
-          {/* 右上角操作按钮 */}
-          <div className="absolute top-5 right-5 flex gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadImage(lightbox.img, lightbox.index);
-              }}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-all"
-              style={{
-                background: "rgba(255,255,255,0.12)",
-                color: "#fff",
-                backdropFilter: "blur(6px)",
-              }}
-              title="下载"
-            >
-              <i className="ri-download-2-line" />
+
+          {/* Prev / Next */}
+          {images.length > 1 && (
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); setLightboxIdx(i => i !== null ? Math.max(0, i - 1) : null); }}
+                disabled={lightboxIdx === 0}
+                style={{ ...lightboxNavStyle, left: 20, opacity: lightboxIdx === 0 ? 0.25 : 1 }}
+              >
+                <i className="ri-arrow-left-s-line" style={{ fontSize: 24, lineHeight: 1 }} />
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); setLightboxIdx(i => i !== null ? Math.min(images.length - 1, i + 1) : null); }}
+                disabled={lightboxIdx === images.length - 1}
+                style={{ ...lightboxNavStyle, right: 20, opacity: lightboxIdx === images.length - 1 ? 0.25 : 1 }}
+              >
+                <i className="ri-arrow-right-s-line" style={{ fontSize: 24, lineHeight: 1 }} />
+              </button>
+              <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", fontSize: 13, color: "rgba(255,255,255,0.45)", fontFamily: "var(--font-space)", letterSpacing: "0.05em" }}>
+                {lightboxIdx + 1} / {images.length}
+              </div>
+            </>
+          )}
+
+          {/* Top-right actions */}
+          <div style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 7 }}>
+            <button onClick={e => { e.stopPropagation(); copyImageToClipboard(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="复制">
+              {copyingIdx === lightboxIdx
+                ? <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                : <i className="ri-file-copy-line" style={{ fontSize: 16, lineHeight: 1 }} />
+              }
             </button>
-            <button
-              onClick={() => setLightbox(null)}
-              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-all"
-              style={{
-                background: "rgba(255,255,255,0.12)",
-                color: "#fff",
-                backdropFilter: "blur(6px)",
-              }}
-              title="关闭 (ESC)"
-            >
-              <i className="ri-close-line" />
+            <button onClick={e => { e.stopPropagation(); downloadImage(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="下载">
+              <i className="ri-download-2-line" style={{ fontSize: 16, lineHeight: 1 }} />
+            </button>
+            <button onClick={() => setLightboxIdx(null)} style={lightboxBtnStyle} title="关闭 (ESC)">
+              <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
             </button>
           </div>
         </div>
       )}
+
+      {/* ── Toast ── */}
+      {toast && (
+        <div
+          key={toast.id}
+          style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100, padding: "9px 16px", borderRadius: 10, background: dark ? "rgba(32,32,32,0.96)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border-focus)", color: "var(--text-primary)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", backdropFilter: "blur(12px)", animation: "fadeUp 0.2s ease", whiteSpace: "nowrap" }}
+        >
+          <i className="ri-check-line" style={{ fontSize: 16, lineHeight: 1 }} /> {toast.msg}
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ── Sidebar label helper ── */
+function SideLabel({ children, icon }: { children: React.ReactNode; icon?: string }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
+      {icon && <i className={icon} style={{ fontSize: 14, lineHeight: 1 }} />}
+      {children}
+    </span>
   );
 }
