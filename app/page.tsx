@@ -19,6 +19,7 @@ type HistoryEntry = {
   id: string;
   prompt: string;
   aspect: AspectRatio;
+  effectiveAspect?: AspectRatio;
   quality: Quality;
   count: number;
   timestamp: number;
@@ -331,6 +332,7 @@ export default function HomePage() {
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
+  const [enhancing, setEnhancing] = useState(false);
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -396,11 +398,11 @@ export default function HomePage() {
   const handleReferenceUpload = useCallback(async (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      showToast("请选择图片文件");
+      showToast("请选择图片文件", "error");
       return;
     }
     if (file.size > MAX_REFERENCE_SIZE) {
-      showToast("参考图不能超过 6 MB");
+      showToast("参考图不能超过 6 MB", "error");
       return;
     }
 
@@ -427,16 +429,37 @@ export default function HomePage() {
     }
   }, [showToast]);
 
-  const enhancePrompt = useCallback(() => {
+  const enhancePrompt = useCallback(async () => {
     if (!prompt.trim()) {
       promptRef.current?.focus();
       showToast("先输入一句提示词");
       return;
     }
-    const overrideAspect = aspect === "auto" ? inferSmartAspect(prompt, referenceImage).aspect : undefined;
-    setPrompt(buildEnhancedPrompt(prompt, referenceImage, aspect, quality, overrideAspect));
-    showToast("提示词已增强");
-  }, [prompt, referenceImage, aspect, quality, showToast]);
+    if (enhancing) return;
+    setEnhancing(true);
+    try {
+      const res = await fetch("/api/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          aspect,
+          quality,
+          referenceImage: referenceImage
+            ? { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" }
+            : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "增强失败");
+      setPrompt(data.enhancedPrompt);
+      showToast("提示词已由 AI 增强");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "增强失败，请重试", "error");
+    } finally {
+      setEnhancing(false);
+    }
+  }, [prompt, referenceImage, aspect, quality, enhancing, showToast]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
@@ -498,7 +521,7 @@ export default function HomePage() {
 
       const newImages: ImageResult[] = data.images;
       setImages(newImages);
-      if (data.warning) showToast(data.warning);
+      if (data.warning) showToast(data.warning, "warning");
 
       /* Save to history */
       const thumbnail = await createThumbnail(imageSrc(newImages[0]));
@@ -507,6 +530,7 @@ export default function HomePage() {
         id: String(Date.now()),
         prompt: prompt.trim(),
         aspect,
+        effectiveAspect,
         quality,
         count,
         timestamp: Date.now(),
@@ -609,6 +633,7 @@ export default function HomePage() {
     setCount(entry.count);
     setActiveVersionId(entry.id);
     setError(null);
+    setDisplayAspect(entry.effectiveAspect ?? (entry.aspect === "auto" ? "1:1" : entry.aspect));
   };
 
   const deleteHistoryEntry = (id: string) => {
@@ -741,10 +766,15 @@ export default function HomePage() {
                     setShowPromptHistory(false);
                     enhancePrompt();
                   }}
+                  disabled={enhancing}
                   className="action-btn"
-                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8 }}
+                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8, opacity: enhancing ? 0.6 : 1, cursor: enhancing ? "not-allowed" : "pointer" }}
                 >
-                  <i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强
+                  {enhancing ? (
+                    <><i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} /> 增强中</>
+                  ) : (
+                    <><i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强</>
+                  )}
                 </button>
                 <button
                   type="button"
