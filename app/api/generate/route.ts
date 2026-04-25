@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
 type ImageResult = { b64?: string; url?: string; mediaType: string };
-type GenerateConfig = { apiKey: string; apiEndpoint: string; editEndpoint: string; model: string };
+type ReferenceEndpointKind = "chat-completions" | "images-edits";
+type GenerateConfig = {
+  apiKey: string;
+  apiEndpoint: string;
+  referenceEndpoint: string;
+  referenceEndpointKind: ReferenceEndpointKind | null;
+  model: string;
+  referenceModel: string;
+  referenceImageField: string;
+  referenceQuality: string;
+};
 type ReferenceImageInput = {
   data?: string;
   mediaType?: string;
@@ -24,10 +34,13 @@ class HttpError extends Error {
 function getConfig(): GenerateConfig {
   const apiKey = process.env.IMAGE_API_KEY?.trim();
   const apiEndpoint = process.env.IMAGE_API_ENDPOINT?.trim();
-  const configuredEditEndpoint = process.env.IMAGE_EDIT_ENDPOINT?.trim();
+  const configuredReferenceEndpoint = process.env.IMAGE_REFERENCE_ENDPOINT?.trim() || process.env.IMAGE_EDIT_ENDPOINT?.trim();
   const model = process.env.IMAGE_MODEL?.trim();
+  const referenceModel = process.env.IMAGE_REFERENCE_MODEL?.trim() || model;
+  const referenceImageField = process.env.IMAGE_REFERENCE_IMAGE_FIELD?.trim() || "image";
+  const referenceQuality = process.env.IMAGE_REFERENCE_QUALITY?.trim() || "2k";
 
-  if (!apiKey || !apiEndpoint || !model) {
+  if (!apiKey || !apiEndpoint || !model || !referenceModel) {
     throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
   }
 
@@ -38,17 +51,38 @@ function getConfig(): GenerateConfig {
     throw new HttpError("服务端图像生成接口地址配置无效", 500);
   }
 
-  const editEndpoint = configuredEditEndpoint;
+  const referenceEndpoint = configuredReferenceEndpoint;
   try {
-    if (!editEndpoint) {
-      return { apiKey, apiEndpoint: endpointUrl.href, editEndpoint: "", model };
+    if (!referenceEndpoint) {
+      return {
+        apiKey,
+        apiEndpoint: endpointUrl.href,
+        referenceEndpoint: "",
+        referenceEndpointKind: null,
+        model,
+        referenceModel,
+        referenceImageField,
+        referenceQuality,
+      };
     }
-    new URL(editEndpoint);
+    const referenceUrl = new URL(referenceEndpoint);
+    const pathname = referenceUrl.pathname.replace(/\/+$/, "");
+    const referenceEndpointKind: ReferenceEndpointKind = pathname.endsWith("/chat/completions")
+      ? "chat-completions"
+      : "images-edits";
+    return {
+      apiKey,
+      apiEndpoint: endpointUrl.href,
+      referenceEndpoint: referenceUrl.href,
+      referenceEndpointKind,
+      model,
+      referenceModel,
+      referenceImageField,
+      referenceQuality,
+    };
   } catch {
-    throw new HttpError("服务端图像编辑接口地址配置无效", 500);
+    throw new HttpError("服务端参考图接口地址配置无效", 500);
   }
-
-  return { apiKey, apiEndpoint: endpointUrl.href, editEndpoint, model };
 }
 
 function getErrorMessage(err: unknown) {
@@ -115,6 +149,109 @@ function parseImageResponse(rawText: string): ImageResult {
   return { b64: img.b64_json, url: img.url, mediaType: "image/png" };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function imageFromString(value: string): ImageResult | null {
+  const dataUrlMatch = value.match(/data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\s]+)/i);
+  if (dataUrlMatch) {
+    return { b64: dataUrlMatch[2].replace(/\s/g, ""), mediaType: dataUrlMatch[1] };
+  }
+
+  const markdownImageMatch = value.match(/!\[[^\]]*]\((https?:\/\/[^)\s]+)\)/i);
+  const url = markdownImageMatch?.[1] ?? value.match(/https?:\/\/[^\s"'<>）)]+/i)?.[0];
+  if (url) {
+    return { url, mediaType: "image/png" };
+  }
+
+  return null;
+}
+
+function collectImageResult(value: unknown): ImageResult | null {
+  if (typeof value === "string") return imageFromString(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const result = collectImageResult(item);
+      if (result) return result;
+    }
+    return null;
+  }
+
+  if (!isRecord(value)) return null;
+
+  if (typeof value.b64_json === "string") {
+    return { b64: value.b64_json, mediaType: typeof value.mime_type === "string" ? value.mime_type : "image/png" };
+  }
+  if (typeof value.base64 === "string") {
+    return { b64: value.base64, mediaType: typeof value.mime_type === "string" ? value.mime_type : "image/png" };
+  }
+  if (typeof value.url === "string") {
+    return imageFromString(value.url) ?? { url: value.url, mediaType: "image/png" };
+  }
+  if (typeof value.image_url === "string") {
+    return imageFromString(value.image_url) ?? { url: value.image_url, mediaType: "image/png" };
+  }
+  if (isRecord(value.image_url) && typeof value.image_url.url === "string") {
+    return imageFromString(value.image_url.url) ?? { url: value.image_url.url, mediaType: "image/png" };
+  }
+
+  const priorityKeys = ["images", "content", "message", "data", "output", "choices"];
+  for (const key of priorityKeys) {
+    const result = collectImageResult(value[key]);
+    if (result) return result;
+  }
+
+  return null;
+}
+
+function extractChatText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(extractChatText).filter(Boolean).join("\n");
+  if (!isRecord(value)) return "";
+  if (typeof value.text === "string") return value.text;
+  if (typeof value.content === "string") return value.content;
+  return extractChatText(value.content ?? value.message ?? value.choices);
+}
+
+function parseChatImageResponse(rawText: string): ImageResult {
+  let data: unknown;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    throw new Error("Chat 图片接口返回了无法解析的数据");
+  }
+
+  const image = collectImageResult(data);
+  if (image) return image;
+
+  const text = extractChatText(data).trim().slice(0, 180);
+  throw new Error(text ? `Chat 图片接口未返回图片：${text}` : "Chat 图片接口未返回可用图片");
+}
+
+function buildReferenceChatPrompt(prompt: string, size: string, quality: string) {
+  const sizeHint: Record<string, string> = {
+    "1024x1024": "方形 1:1 构图",
+    "1536x1024": "横版 3:2 构图",
+    "1024x1536": "竖版 2:3 构图",
+  };
+  const qualityHint: Record<string, string> = {
+    low: "快速概念图，保留主要视觉方向",
+    medium: "完整细节，质感清晰",
+    high: "高质量商业级图像，细节丰富，光影精致",
+  };
+
+  return [
+    "请基于随附参考图生成一张新图。",
+    `用户提示词：${prompt}`,
+    "参考图只用于视觉风格、色彩调性、光影、构图手法、材质质感和细节语言；画面主体与内容必须以用户提示词为准。",
+    `目标画幅：${sizeHint[size] ?? size}`,
+    `输出质量：${qualityHint[quality] ?? quality}`,
+    "请直接返回生成后的图片，不要只返回文字说明。",
+  ].join("\n");
+}
+
 // 单次请求，兼容不支持 n>1 的中转服务
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
   const controller = new AbortController();
@@ -155,15 +292,15 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
   return parseImageResponse(rawText);
 }
 
-async function editOne(
+async function editOneViaImagesEndpoint(
   prompt: string,
   size: string,
   quality: string,
   referenceImage: ReferenceImageInput,
   config: GenerateConfig
 ): Promise<ImageResult> {
-  if (!config.editEndpoint) {
-    throw new HttpError("参考图生成接口未配置，请设置 IMAGE_EDIT_ENDPOINT 后再使用参考图", 500);
+  if (!config.referenceEndpoint) {
+    throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
   const controller = new AbortController();
@@ -177,12 +314,13 @@ async function editOne(
   appendIfDefined(formData, "model", config.model);
   appendIfDefined(formData, "prompt", prompt);
   appendIfDefined(formData, "size", size);
-  appendIfDefined(formData, "quality", quality);
-  formData.append("image[]", file);
+  appendIfDefined(formData, "quality", config.referenceQuality || quality);
+  appendIfDefined(formData, "response_format", "url");
+  formData.append(config.referenceImageField, file);
 
   let response: Response;
   try {
-    response = await fetch(config.editEndpoint, {
+    response = await fetch(config.referenceEndpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -212,6 +350,81 @@ async function editOne(
   }
 
   return parseImageResponse(rawText);
+}
+
+async function editOneViaChatEndpoint(
+  prompt: string,
+  size: string,
+  quality: string,
+  referenceImage: ReferenceImageInput,
+  config: GenerateConfig
+): Promise<ImageResult> {
+  if (!config.referenceEndpoint) {
+    throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const mediaType = referenceImage.mediaType === "image/jpg" ? "image/jpeg" : referenceImage.mediaType;
+
+  let response: Response;
+  try {
+    response = await fetch(config.referenceEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.referenceModel,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
+              { type: "image_url", image_url: { url: `data:${mediaType};base64,${referenceImage.data}` } },
+            ],
+          },
+        ],
+        max_tokens: 4096,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("参考图生成请求超时，请稍后重试");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const rawText = await response.text();
+  console.info("[generate] upstream reference chat status:", response.status);
+
+  if (!response.ok) {
+    let message = `API 错误 ${response.status}`;
+    try {
+      const errJson = JSON.parse(rawText);
+      message = errJson.error?.message ?? errJson.message ?? message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  return parseChatImageResponse(rawText);
+}
+
+function generateWithReference(
+  prompt: string,
+  size: string,
+  quality: string,
+  referenceImage: ReferenceImageInput,
+  config: GenerateConfig
+) {
+  if (config.referenceEndpointKind === "chat-completions") {
+    return editOneViaChatEndpoint(prompt, size, quality, referenceImage, config);
+  }
+  return editOneViaImagesEndpoint(prompt, size, quality, referenceImage, config);
 }
 
 export async function POST(req: NextRequest) {
@@ -250,7 +463,7 @@ export async function POST(req: NextRequest) {
     const results = await Promise.allSettled(
       Array.from({ length: count }, () => (
         parsedReferenceImage
-          ? editOne(prompt.trim(), size, quality, parsedReferenceImage, config)
+          ? generateWithReference(prompt.trim(), size, quality, parsedReferenceImage, config)
           : generateOne(baseBody, config)
       ))
     );
