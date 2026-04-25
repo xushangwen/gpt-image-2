@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 type ImageResult = { b64?: string; url?: string; mediaType: string };
 type ProviderName = "tuzi" | "bltcy" | "custom";
-type ReferenceEndpointKind = "chat-completions" | "images-edits";
+type ReferenceEndpointKind = "chat-completions" | "images-edits" | "images-generations";
+type SizeFormat = "pixel" | "ratio";
 type GenerateConfig = {
   provider: ProviderName;
   apiKey: string;
@@ -13,6 +14,7 @@ type GenerateConfig = {
   referenceModel: string;
   referenceImageField: string;
   referenceQuality: string;
+  sizeFormat: SizeFormat;
 };
 type ReferenceImageInput = {
   data?: string;
@@ -25,23 +27,31 @@ const PROVIDER_PRESETS: Record<Exclude<ProviderName, "custom">, {
   referenceEndpoint: string;
   referenceImageField: string;
   referenceQuality: string;
+  sizeFormat: SizeFormat;
 }> = {
   tuzi: {
     apiEndpoint: "https://api.tu-zi.com/v1/images/generations",
-    referenceEndpoint: "https://api.tu-zi.com/v1/images/edits",
+    referenceEndpoint: "https://api.tu-zi.com/v1/images/generations",
     referenceImageField: "image",
-    referenceQuality: "2k",
+    referenceQuality: "",
+    sizeFormat: "ratio",
   },
   bltcy: {
     apiEndpoint: "https://api.bltcy.ai/v1/images/generations",
     referenceEndpoint: "https://api.bltcy.ai/v1/images/edits",
     referenceImageField: "image",
-    referenceQuality: "2k",
+    referenceQuality: "",
+    sizeFormat: "pixel",
   },
 };
 
 const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
+const SIZE_TO_RATIO: Record<string, string> = {
+  "1024x1024": "1:1",
+  "1536x1024": "3:2",
+  "1024x1536": "2:3",
+};
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
@@ -70,7 +80,19 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
 
 function getEndpointKind(endpoint: string): ReferenceEndpointKind {
   const pathname = new URL(endpoint).pathname.replace(/\/+$/, "");
-  return pathname.endsWith("/chat/completions") ? "chat-completions" : "images-edits";
+  if (pathname.endsWith("/chat/completions")) return "chat-completions";
+  if (pathname.endsWith("/images/generations")) return "images-generations";
+  return "images-edits";
+}
+
+function getSizeFormat(provider: ProviderName, preset: typeof PROVIDER_PRESETS.tuzi | null): SizeFormat {
+  const configured =
+    getProviderEnv(provider, "SIZE_FORMAT") ||
+    (provider === "custom" ? process.env.IMAGE_SIZE_FORMAT?.trim() : "") ||
+    preset?.sizeFormat ||
+    "pixel";
+  if (configured === "pixel" || configured === "ratio") return configured;
+  throw new HttpError(`不支持的图像尺寸格式配置：${configured}`, 500);
 }
 
 function getConfig(): GenerateConfig {
@@ -85,8 +107,17 @@ function getConfig(): GenerateConfig {
     process.env.IMAGE_EDIT_ENDPOINT?.trim();
   const model = getProviderEnv(provider, "IMAGE_MODEL") || process.env.IMAGE_MODEL?.trim() || "gpt-image-2";
   const referenceModel = getProviderEnv(provider, "REFERENCE_MODEL") || process.env.IMAGE_REFERENCE_MODEL?.trim() || model;
-  const referenceImageField = getProviderEnv(provider, "REFERENCE_IMAGE_FIELD") || process.env.IMAGE_REFERENCE_IMAGE_FIELD?.trim() || preset?.referenceImageField || "image";
-  const referenceQuality = getProviderEnv(provider, "REFERENCE_QUALITY") || process.env.IMAGE_REFERENCE_QUALITY?.trim() || preset?.referenceQuality || "2k";
+  const referenceImageField =
+    getProviderEnv(provider, "REFERENCE_IMAGE_FIELD") ||
+    preset?.referenceImageField ||
+    process.env.IMAGE_REFERENCE_IMAGE_FIELD?.trim() ||
+    "image";
+  const referenceQuality =
+    getProviderEnv(provider, "REFERENCE_QUALITY") ||
+    preset?.referenceQuality ||
+    (provider === "custom" ? process.env.IMAGE_REFERENCE_QUALITY?.trim() : "") ||
+    "";
+  const sizeFormat = getSizeFormat(provider, preset);
 
   if (!apiKey || !apiEndpoint || !model || !referenceModel) {
     throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
@@ -112,6 +143,7 @@ function getConfig(): GenerateConfig {
         referenceModel,
         referenceImageField,
         referenceQuality,
+        sizeFormat,
       };
     }
     const referenceUrl = new URL(referenceEndpoint);
@@ -125,6 +157,7 @@ function getConfig(): GenerateConfig {
       referenceModel,
       referenceImageField,
       referenceQuality,
+      sizeFormat,
     };
   } catch {
     throw new HttpError("服务端参考图接口地址配置无效", 500);
@@ -175,24 +208,34 @@ function appendIfDefined(formData: FormData, key: string, value: string | number
   if (value !== undefined && value !== "") formData.append(key, String(value));
 }
 
+function normalizeReferenceMediaType(mediaType?: string) {
+  return mediaType === "image/jpg" ? "image/jpeg" : mediaType || "image/png";
+}
+
+function referenceImageToDataUrl(referenceImage: ReferenceImageInput) {
+  return `data:${normalizeReferenceMediaType(referenceImage.mediaType)};base64,${referenceImage.data}`;
+}
+
+function getReferenceQuality(config: GenerateConfig, quality: string) {
+  return config.referenceQuality || quality;
+}
+
+function getProviderSize(config: GenerateConfig, size: string) {
+  return config.sizeFormat === "ratio" ? SIZE_TO_RATIO[size] ?? size : size;
+}
+
 function parseImageResponse(rawText: string): ImageResult {
-  let data: { data?: { b64_json?: string; url?: string }[] };
+  let data: unknown;
   try {
     data = JSON.parse(rawText);
   } catch {
     throw new Error("API 返回了无法解析的数据");
   }
 
-  if (!Array.isArray(data.data) || data.data.length === 0) {
-    throw new Error("API 返回了未知格式，请稍后重试");
-  }
+  const image = collectImageResult(data);
+  if (image) return image;
 
-  const img = data.data[0];
-  if (!img.b64_json && !img.url) {
-    throw new Error("API 未返回可用图片");
-  }
-
-  return { b64: img.b64_json, url: img.url, mediaType: "image/png" };
+  throw new Error("API 未返回可用图片");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -281,6 +324,9 @@ function buildReferenceChatPrompt(prompt: string, size: string, quality: string)
     "1024x1024": "方形 1:1 构图",
     "1536x1024": "横版 3:2 构图",
     "1024x1536": "竖版 2:3 构图",
+    "1:1": "方形 1:1 构图",
+    "3:2": "横版 3:2 构图",
+    "2:3": "竖版 2:3 构图",
   };
   const qualityHint: Record<string, string> = {
     low: "快速概念图，保留主要视觉方向",
@@ -302,6 +348,7 @@ function buildReferenceChatPrompt(prompt: string, size: string, quality: string)
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const startedAt = Date.now();
 
   let response: Response;
   try {
@@ -324,7 +371,67 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream status:", response.status);
+  console.info("[generate] upstream status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
+
+  if (!response.ok) {
+    let message = `API 错误 ${response.status}`;
+    try {
+      const errJson = JSON.parse(rawText);
+      message = errJson.error?.message ?? errJson.message ?? message;
+    } catch {}
+    throw new Error(message);
+  }
+
+  return parseImageResponse(rawText);
+}
+
+async function editOneViaGenerationsEndpoint(
+  prompt: string,
+  size: string,
+  quality: string,
+  referenceImage: ReferenceImageInput,
+  config: GenerateConfig
+): Promise<ImageResult> {
+  if (!config.referenceEndpoint) {
+    throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const startedAt = Date.now();
+  const body: Record<string, unknown> = {
+    model: config.referenceModel,
+    prompt,
+    size,
+    response_format: "url",
+    n: 1,
+    [config.referenceImageField]: referenceImageToDataUrl(referenceImage),
+  };
+  const resolvedQuality = getReferenceQuality(config, quality);
+  if (resolvedQuality) body.quality = resolvedQuality;
+
+  let response: Response;
+  try {
+    response = await fetch(config.referenceEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("参考图生成请求超时，请稍后重试");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const rawText = await response.text();
+  console.info("[generate] upstream reference generation status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -351,16 +458,17 @@ async function editOneViaImagesEndpoint(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  const startedAt = Date.now();
   const bytes = Buffer.from(referenceImage.data!, "base64");
   const extension = getExtension(referenceImage.mediaType!);
   const safeBaseName = referenceImage.name!.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 80) || "reference-image";
   const file = new File([bytes], `${safeBaseName}.${extension}`, { type: referenceImage.mediaType });
   const formData = new FormData();
 
-  appendIfDefined(formData, "model", config.model);
+  appendIfDefined(formData, "model", config.referenceModel);
   appendIfDefined(formData, "prompt", prompt);
   appendIfDefined(formData, "size", size);
-  appendIfDefined(formData, "quality", config.referenceQuality || quality);
+  appendIfDefined(formData, "quality", getReferenceQuality(config, quality));
   appendIfDefined(formData, "response_format", "url");
   formData.append(config.referenceImageField, file);
 
@@ -384,7 +492,7 @@ async function editOneViaImagesEndpoint(
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream edit status:", response.status);
+  console.info("[generate] upstream edit status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -411,7 +519,7 @@ async function editOneViaChatEndpoint(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const mediaType = referenceImage.mediaType === "image/jpg" ? "image/jpeg" : referenceImage.mediaType;
+  const startedAt = Date.now();
 
   let response: Response;
   try {
@@ -428,7 +536,7 @@ async function editOneViaChatEndpoint(
             role: "user",
             content: [
               { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
-              { type: "image_url", image_url: { url: `data:${mediaType};base64,${referenceImage.data}` } },
+              { type: "image_url", image_url: { url: referenceImageToDataUrl(referenceImage) } },
             ],
           },
         ],
@@ -446,7 +554,7 @@ async function editOneViaChatEndpoint(
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream reference chat status:", response.status);
+  console.info("[generate] upstream reference chat status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -469,6 +577,9 @@ function generateWithReference(
 ) {
   if (config.referenceEndpointKind === "chat-completions") {
     return editOneViaChatEndpoint(prompt, size, quality, referenceImage, config);
+  }
+  if (config.referenceEndpointKind === "images-generations") {
+    return editOneViaGenerationsEndpoint(prompt, size, quality, referenceImage, config);
   }
   return editOneViaImagesEndpoint(prompt, size, quality, referenceImage, config);
 }
@@ -493,12 +604,13 @@ export async function POST(req: NextRequest) {
     }
 
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
+    const upstreamSize = getProviderSize(config, size);
     const baseBody = {
       model: config.model,
       prompt: prompt.trim(),
-      size,
+      size: upstreamSize,
       quality,
-      response_format: "b64_json",
+      response_format: "url",
       n: 1,
     };
 
@@ -508,8 +620,11 @@ export async function POST(req: NextRequest) {
       `provider=${config.provider}`,
       `count=${count}`,
       `size=${size}`,
+      `upstreamSize=${upstreamSize}`,
       `quality=${quality}`,
       `reference=${parsedReferenceImage ? "yes" : "no"}`,
+      `referenceKind=${config.referenceEndpointKind ?? "none"}`,
+      `model=${parsedReferenceImage ? config.referenceModel : config.model}`,
       `apiHost=${new URL(config.apiEndpoint).hostname}`,
       `referenceHost=${config.referenceEndpoint ? new URL(config.referenceEndpoint).hostname : "none"}`
     );
@@ -518,7 +633,7 @@ export async function POST(req: NextRequest) {
     const results = await Promise.allSettled(
       Array.from({ length: count }, () => (
         parsedReferenceImage
-          ? generateWithReference(prompt.trim(), size, quality, parsedReferenceImage, config)
+          ? generateWithReference(prompt.trim(), upstreamSize, quality, parsedReferenceImage, config)
           : generateOne(baseBody, config)
       ))
     );

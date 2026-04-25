@@ -182,6 +182,11 @@ function dataUrlToBase64(dataUrl: string) {
   return dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
 }
 
+async function createHistoryThumbnail(img: ImageResult) {
+  if (img.url) return img.url;
+  return createThumbnail(imageSrc(img));
+}
+
 /* ── Smart aspect inference ── */
 const PORTRAIT_KEYWORDS = [
   '海报', 'poster', '竖版', '竖向', '竖式', '竖幅', '竖型',
@@ -336,7 +341,6 @@ export default function HomePage() {
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
   const [enhancing, setEnhancing] = useState(false);
-  const [loadingPhase, setLoadingPhase] = useState<"analyzing" | "generating" | null>(null);
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -482,34 +486,6 @@ export default function HomePage() {
     setElapsed(null);
     setShowPromptHistory(false);
     setDisplayAspect(effectiveAspect);
-    setLoadingPhase(referenceImage ? "analyzing" : "generating");
-
-    // 若有参考图，先用 Gemini vision 分析其视觉风格并融合进提示词
-    let generationPrompt = prompt.trim();
-    if (referenceImage) {
-      try {
-        const res = await fetch("/api/enhance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            prompt,
-            aspect: effectiveAspect,
-            quality,
-            referenceImage: { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" },
-          }),
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.enhancedPrompt) generationPrompt = data.enhancedPrompt;
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return;
-        // 分析失败时静默降级，继续用原始提示词生成
-      }
-      if (!mountedRef.current) return;
-      setLoadingPhase("generating");
-    }
 
     setElapsed(0);
     const start = Date.now();
@@ -520,7 +496,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: generationPrompt,
+          prompt: prompt.trim(),
           size: effectiveSize,
           quality,
           n: count,
@@ -553,7 +529,7 @@ export default function HomePage() {
       if (data.warning) showToast(data.warning, "warning");
 
       /* Save to history */
-      const thumbnail = await createThumbnail(imageSrc(newImages[0]));
+      const thumbnail = await createHistoryThumbnail(newImages[0]);
       versionCounterRef.current += 1;
       const entry: HistoryEntry = {
         id: String(Date.now()),
@@ -595,7 +571,7 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : "未知错误");
     } finally {
       if (generateControllerRef.current === controller) generateControllerRef.current = null;
-      if (mountedRef.current) { setLoading(false); setLoadingPhase(null); }
+      if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
   }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, showToast]);
@@ -996,7 +972,7 @@ export default function HomePage() {
               {loading ? (
                 <>
                   <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
-                  {loadingPhase === "analyzing" ? "分析参考图..." : `生成中${elapsed !== null ? ` · ${elapsed}s` : ""}`}
+                  {`生成中${elapsed !== null ? ` · ${elapsed}s` : ""}`}
                 </>
               ) : (
                 <>
@@ -1040,7 +1016,7 @@ export default function HomePage() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                {loadingPhase === "analyzing" ? "正在分析参考图风格..." : `正在生成${elapsed !== null ? ` · ${elapsed}s` : ""}`}
+                {`正在生成${elapsed !== null ? ` · ${elapsed}s` : ""}`}
               </p>
                 {elapsed !== null && elapsed >= 60 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,180,0,0.22)", background: "rgba(255,180,0,0.05)", fontSize: 12, color: "#ffb400" }}>
