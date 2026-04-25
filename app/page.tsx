@@ -495,6 +495,13 @@ export default function HomePage() {
           size: effectiveSize,
           quality,
           n: count,
+          referenceImage: referenceImage
+            ? {
+                data: dataUrlToBase64(referenceImage.dataUrl),
+                mediaType: referenceImage.mediaType,
+                name: referenceImage.name,
+              }
+            : undefined,
         }),
         signal: controller.signal,
       });
