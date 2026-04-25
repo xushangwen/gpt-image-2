@@ -48,9 +48,21 @@ function parseDownloadUrl(input: unknown) {
 
 function isBlockedHost(hostname: string) {
   const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost") || host === "::1" || host === "[::1]") {
-    return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+
+  // IPv6 in bracket notation
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const inner = host.slice(1, -1);
+    if (inner === "::" || inner === "::1") return true;
+    // IPv4-mapped: ::ffff:a.b.c.d
+    if (inner.startsWith("::ffff:")) return isBlockedHost(inner.slice(7));
+    // Loopback, ULA (fc00::/7), link-local (fe80::/10)
+    if (/^(::1$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)/i.test(inner)) return true;
+    return false;
   }
+
+  // Bare IPv6 (no brackets) — treat as blocked for safety
+  if (host.includes(":")) return true;
 
   const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (!ipv4) return false;

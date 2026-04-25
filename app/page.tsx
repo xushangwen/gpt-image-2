@@ -5,6 +5,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 /* ── Types ── */
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
 type Quality = "low" | "medium" | "high";
+type ProviderChoice = "tuzi" | "bltcy";
 type ImageResult = { b64?: string; url?: string; mediaType: string };
 type ReferenceImage = {
   name: string;
@@ -64,9 +65,15 @@ const CARD_ASPECT: Record<AspectRatio, string> = {
 
 const LS_HISTORY = "imagegen_history_v2";
 const LS_PROMPTS = "imagegen_prompts_v2";
+const LS_PROVIDER = "imagegen_provider";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
 const MAX_REFERENCE_SIZE = 6 * 1024 * 1024;
+
+const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
+  tuzi: { name: "线路一", desc: "兔子中转" },
+  bltcy: { name: "线路二", desc: "BLTCY" },
+};
 
 /* ── Utils ── */
 function imageSrc(img: ImageResult) {
@@ -183,8 +190,34 @@ function dataUrlToBase64(dataUrl: string) {
 }
 
 async function createHistoryThumbnail(img: ImageResult) {
-  if (img.url) return img.url;
   return createThumbnail(imageSrc(img));
+}
+
+async function compressReferenceForApi(referenceImage: ReferenceImage): Promise<{ data: string; mediaType: string }> {
+  const MAX_DIM = 1536;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType }); return; }
+          const reader = new FileReader();
+          reader.onload = () => resolve({ data: dataUrlToBase64(String(reader.result)), mediaType: "image/jpeg" });
+          reader.onerror = () => resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType });
+          reader.readAsDataURL(blob);
+        },
+        "image/jpeg",
+        0.85
+      );
+    };
+    img.onerror = () => resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType });
+    img.src = referenceImage.dataUrl;
+  });
 }
 
 /* ── Smart aspect inference ── */
@@ -316,15 +349,8 @@ export default function HomePage() {
   const [aspect, setAspect] = useState<AspectRatio>("auto");
   const [quality, setQuality] = useState<Quality>("high");
   const [count, setCount] = useState(1);
-  const [dark, setDark] = useState(() => {
-    try {
-      const saved = localStorage.getItem("theme");
-      if (saved) return saved === "dark";
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      return true;
-    }
-  });
+  const [dark, setDark] = useState(true);
+  const [provider, setProvider] = useState<ProviderChoice>("tuzi");
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -354,6 +380,11 @@ export default function HomePage() {
   useEffect(() => {
     setHistory(loadHistory());
     setRecentPrompts(loadPrompts());
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme !== null) setDark(savedTheme === "dark");
+    else setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const savedProvider = localStorage.getItem(LS_PROVIDER);
+    if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
   }, []);
 
   /* Theme */
@@ -361,6 +392,11 @@ export default function HomePage() {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch {}
   }, [dark]);
+
+  /* Provider */
+  useEffect(() => {
+    try { localStorage.setItem(LS_PROVIDER, provider); } catch {}
+  }, [provider]);
 
   /* Cleanup async UI work on unmount */
   useEffect(() => {
@@ -453,6 +489,7 @@ export default function HomePage() {
           prompt,
           aspect,
           quality,
+          provider,
           referenceImage: referenceImage
             ? { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" }
             : undefined,
@@ -467,7 +504,7 @@ export default function HomePage() {
     } finally {
       setEnhancing(false);
     }
-  }, [prompt, referenceImage, aspect, quality, enhancing, showToast]);
+  }, [prompt, referenceImage, aspect, quality, enhancing, provider, showToast]);
 
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || loading) return;
@@ -492,6 +529,7 @@ export default function HomePage() {
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
 
     try {
+      const apiRefImage = referenceImage ? await compressReferenceForApi(referenceImage) : undefined;
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -500,12 +538,9 @@ export default function HomePage() {
           size: effectiveSize,
           quality,
           n: count,
-          referenceImage: referenceImage
-            ? {
-                data: dataUrlToBase64(referenceImage.dataUrl),
-                mediaType: referenceImage.mediaType,
-                name: referenceImage.name,
-              }
+          provider,
+          referenceImage: apiRefImage
+            ? { data: apiRefImage.data, mediaType: apiRefImage.mediaType, name: referenceImage!.name }
             : undefined,
         }),
         signal: controller.signal,
@@ -574,7 +609,7 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, showToast]);
+  }, [prompt, loading, selectedAspect.size, quality, count, aspect, referenceImage, provider, showToast]);
 
   const clearImages = () => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); };
 
@@ -670,7 +705,7 @@ export default function HomePage() {
   });
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
+    <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* ── Header ── */}
       <header style={{
@@ -694,7 +729,36 @@ export default function HomePage() {
             GPT-Image-2
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* 线路切换 */}
+          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+            {(["tuzi", "bltcy"] as const).map((p) => {
+              const active = provider === p;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setProvider(p)}
+                  title={PROVIDER_LABELS[p].desc}
+                  style={{
+                    padding: "4px 10px",
+                    height: 28,
+                    fontSize: 11,
+                    fontFamily: "var(--font-space)",
+                    border: "none",
+                    borderLeft: p === "bltcy" ? "1px solid var(--border)" : "none",
+                    background: active ? "var(--accent-dim)" : "transparent",
+                    color: active ? "var(--accent)" : "var(--text-muted)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    fontWeight: active ? 500 : 400,
+                    lineHeight: 1,
+                  }}
+                >
+                  {PROVIDER_LABELS[p].name}
+                </button>
+              );
+            })}
+          </div>
           <span style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
             QY.Studio
           </span>
@@ -709,11 +773,11 @@ export default function HomePage() {
         </div>
       </header>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div className="layout-inner" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* ── Left Sidebar ── */}
-        <aside style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
-          <div style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
+        <aside className="layout-sidebar" style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
+          <div className="layout-sidebar__scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
 
             {/* Prompt */}
             <div className="prompt-area" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -734,7 +798,7 @@ export default function HomePage() {
                   onBlur={e => e.target.style.borderColor = "var(--border)"}
                   placeholder="描述你想生成的图像..."
                   rows={6}
-                  style={{ width: "100%", resize: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-ibm), system-ui", transition: "border-color 0.15s" }}
+                  style={{ width: "100%", resize: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
                 />
 
                 {/* Prompt history dropdown */}
@@ -947,7 +1011,7 @@ export default function HomePage() {
           </div>
 
           {/* Generate Button */}
-          <div style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+          <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
             <button
               onClick={handleGenerate}
               disabled={!prompt.trim() || loading}
@@ -998,7 +1062,7 @@ export default function HomePage() {
         </aside>
 
         {/* ── Main Preview Area ── */}
-        <main style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, overflow: "auto", gap: 22 }}>
+        <main className="layout-main" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, overflow: "auto", gap: 22 }}>
 
           {/* Loading skeleton */}
           {loading && (

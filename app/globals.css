@@ -58,7 +58,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text-primary);
-  font-family: var(--font-ibm), var(--font-space), system-ui, sans-serif;
+  font-family: var(--font-cn), var(--font-space), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background 0.2s, color 0.2s;
 }
@@ -168,5 +168,41 @@ html, body {
   .flickering-grid {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* ── 响应式布局 ── */
+@media (max-width: 768px) {
+  .layout-root {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow: auto !important;
+  }
+  .layout-inner {
+    flex-direction: column !important;
+    overflow: visible !important;
+  }
+  .layout-sidebar {
+    width: 100% !important;
+    flex-shrink: 0 !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--border);
+    overflow: visible !important;
+  }
+  .layout-sidebar__scroll {
+    flex: none !important;
+    overflow-y: visible !important;
+  }
+  .layout-sidebar__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--surface);
+  }
+  .layout-main {
+    overflow: visible !important;
+    padding: 20px 16px !important;
+    justify-content: flex-start !important;
+    min-height: 40vh;
   }
 }

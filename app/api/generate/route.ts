@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 300;
+
 type ImageResult = { b64?: string; url?: string; mediaType: string };
 type ProviderName = "tuzi" | "bltcy" | "custom";
 type ReferenceEndpointKind = "chat-completions" | "images-edits" | "images-generations";
@@ -95,8 +97,8 @@ function getSizeFormat(provider: ProviderName, preset: typeof PROVIDER_PRESETS.t
   throw new HttpError(`不支持的图像尺寸格式配置：${configured}`, 500);
 }
 
-function getConfig(): GenerateConfig {
-  const provider = getProvider();
+function getConfig(providerOverride?: ProviderName): GenerateConfig {
+  const provider = providerOverride ?? getProvider();
   const preset = provider === "custom" ? null : PROVIDER_PRESETS[provider];
   const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
   const apiEndpoint = getProviderEnv(provider, "API_ENDPOINT") || preset?.apiEndpoint || process.env.IMAGE_API_ENDPOINT?.trim();
@@ -403,7 +405,7 @@ async function editOneViaGenerationsEndpoint(
     model: config.referenceModel,
     prompt,
     size,
-    response_format: "url",
+    response_format: "b64_json",
     n: 1,
     [config.referenceImageField]: referenceImageToDataUrl(referenceImage),
   };
@@ -469,7 +471,7 @@ async function editOneViaImagesEndpoint(
   appendIfDefined(formData, "prompt", prompt);
   appendIfDefined(formData, "size", size);
   appendIfDefined(formData, "quality", getReferenceQuality(config, quality));
-  appendIfDefined(formData, "response_format", "url");
+  appendIfDefined(formData, "response_format", "b64_json");
   formData.append(config.referenceImageField, file);
 
   let response: Response;
@@ -586,8 +588,11 @@ function generateWithReference(
 
 export async function POST(req: NextRequest) {
   try {
-    const config = getConfig();
-    const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = await readJson(req);
+    const raw = await readJson(req);
+    const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
+    const reqProvider: ProviderName | undefined =
+      raw.provider === "tuzi" || raw.provider === "bltcy" ? raw.provider : undefined;
+    const config = getConfig(reqProvider);
     const parsedReferenceImage = parseReferenceImage(referenceImage);
 
     if (typeof prompt !== "string" || !prompt.trim()) {
@@ -610,7 +615,7 @@ export async function POST(req: NextRequest) {
       prompt: prompt.trim(),
       size: upstreamSize,
       quality,
-      response_format: "url",
+      response_format: "b64_json",
       n: 1,
     };
 

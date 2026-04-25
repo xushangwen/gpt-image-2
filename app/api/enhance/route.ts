@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 const ENHANCE_TIMEOUT_MS = 30_000;
 type ProviderName = "tuzi" | "bltcy" | "custom";
 
@@ -25,8 +27,8 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
   return process.env[`${provider.toUpperCase()}_${suffix}`]?.trim();
 }
 
-function getConfig() {
-  const provider = getProvider();
+function getConfig(providerOverride?: ProviderName) {
+  const provider = providerOverride ?? getProvider();
   const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
   const chatEndpoint =
     getProviderEnv(provider, "CHAT_ENDPOINT") ||
@@ -84,19 +86,20 @@ const QUALITY_DESC: Record<string, string> = {
   high: "高质量商业级图像，细节丰富，光影精致",
 };
 
+const ALLOWED_REFERENCE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+
 type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
 export async function POST(req: NextRequest) {
   try {
-    const config = getConfig();
-
     let body: {
       prompt?: unknown;
       aspect?: unknown;
       quality?: unknown;
       referenceImage?: { data?: string; mediaType?: string };
+      provider?: unknown;
     };
     try {
       body = await req.json();
@@ -105,6 +108,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { prompt, aspect = "auto", quality = "high", referenceImage } = body;
+    const reqProvider: ProviderName | undefined =
+      body.provider === "tuzi" || body.provider === "bltcy" ? body.provider : undefined;
+    const config = getConfig(reqProvider);
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);
@@ -126,6 +132,9 @@ export async function POST(req: NextRequest) {
     const userContent: ContentPart[] = [];
 
     if (referenceImage?.data && referenceImage?.mediaType) {
+      if (!ALLOWED_REFERENCE_MEDIA_TYPES.has(referenceImage.mediaType)) {
+        throw new HttpError("参考图类型不支持", 400);
+      }
       userContent.push({
         type: "image_url",
         image_url: { url: `data:${referenceImage.mediaType};base64,${referenceImage.data}` },
