@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "provider:tuzi": "node scripts/switch-provider.mjs tuzi",
+    "provider:bltcy": "node scripts/switch-provider.mjs bltcy"
   },
   "dependencies": {
     "next": "16.2.4",
