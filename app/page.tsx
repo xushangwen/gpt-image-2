@@ -21,7 +21,7 @@ type HistoryEntry = {
   id: string;
   prompt: string;
   aspect: AspectRatio;
-  effectiveAspect?: AspectRatio;
+  effectiveAspect?: string;
   quality: Quality;
   count: number;
   timestamp: number;
@@ -29,6 +29,7 @@ type HistoryEntry = {
   imageCount: number;
   referenceName?: string;
   versionLabel?: string;
+  engine?: AIEngine;
 };
 type ToastType = "success" | "error" | "warning";
 
@@ -55,6 +56,25 @@ const GEMINI_QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] 
   { label: "1K", value: "low",    icon: "ri-signal-wifi-1-fill" },
   { label: "2K", value: "medium", icon: "ri-signal-wifi-2-fill" },
   { label: "4K", value: "high",   icon: "ri-signal-wifi-3-fill" },
+];
+
+// 14 aspect ratios supported by gemini-3.1-flash-image-preview
+// 4:1 / 1:4 / 8:1 / 1:8 are exclusive to this model
+const GEMINI_ASPECT_OPTIONS: { value: string; group: "common" | "extreme" }[] = [
+  { value: "1:1",  group: "common"  },
+  { value: "4:3",  group: "common"  },
+  { value: "3:4",  group: "common"  },
+  { value: "16:9", group: "common"  },
+  { value: "9:16", group: "common"  },
+  { value: "3:2",  group: "common"  },
+  { value: "2:3",  group: "common"  },
+  { value: "4:5",  group: "common"  },
+  { value: "5:4",  group: "common"  },
+  { value: "21:9", group: "common"  },
+  { value: "4:1",  group: "extreme" },
+  { value: "1:4",  group: "extreme" },
+  { value: "8:1",  group: "extreme" },
+  { value: "1:8",  group: "extreme" },
 ];
 
 const COUNT_OPTIONS: { n: number; icon: string }[] = [
@@ -235,6 +255,90 @@ async function compressReferenceForApi(referenceImage: ReferenceImage): Promise<
   }
 }
 
+/* ── Aspect ratio utils ── */
+function toDisplayAspect(ratio: string): string {
+  if (!ratio || ratio === "auto") return "1 / 1";
+  return ratio.replace(":", " / ");
+}
+
+// Returns w/h pixel sizes for a mini visual ratio box (max 14px on larger side)
+function ratioBox(ratio: string): { w: number; h: number } {
+  const [ws, hs] = ratio.split(":");
+  const w = Number(ws) || 1;
+  const h = Number(hs) || 1;
+  const max = 14;
+  if (w >= h) return { w: max, h: Math.max(2, Math.round(max * h / w)) };
+  return { w: Math.max(2, Math.round(max * w / h)), h: max };
+}
+
+/* ── IndexedDB — persist full image data across sessions ── */
+const IDB_NAME = "imagegen_idb";
+const IDB_VER  = 1;
+
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains("versions")) {
+        req.result.createObjectStore("versions", { keyPath: "id" });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+async function idbSaveVersion(entry: VersionEntry): Promise<void> {
+  try {
+    const db = await openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("versions", "readwrite");
+      tx.objectStore("versions").put(entry);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror    = () => { db.close(); reject(tx.error); };
+    });
+  } catch { /* storage full or unavailable */ }
+}
+
+async function idbLoadVersions(): Promise<VersionEntry[]> {
+  try {
+    const db = await openIDB();
+    return await new Promise<VersionEntry[]>((resolve, reject) => {
+      const tx  = db.transaction("versions", "readonly");
+      const req = tx.objectStore("versions").getAll();
+      req.onsuccess = () => {
+        db.close();
+        resolve((req.result as VersionEntry[]).sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_HISTORY));
+      };
+      req.onerror = () => { db.close(); reject(req.error); };
+    });
+  } catch { return []; }
+}
+
+async function idbDeleteVersion(id: string): Promise<void> {
+  try {
+    const db = await openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("versions", "readwrite");
+      tx.objectStore("versions").delete(id);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror    = () => { db.close(); reject(tx.error); };
+    });
+  } catch { /* ignore */ }
+}
+
+async function idbClearVersions(): Promise<void> {
+  try {
+    const db = await openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("versions", "readwrite");
+      tx.objectStore("versions").clear();
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror    = () => { db.close(); reject(tx.error); };
+    });
+  } catch { /* ignore */ }
+}
+
 /* ── Smart aspect inference ── */
 const PORTRAIT_KEYWORDS = [
   '海报', 'poster', '竖版', '竖向', '竖式', '竖幅', '竖型',
@@ -381,7 +485,8 @@ export default function HomePage() {
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
-  const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
+  const [displayAspect, setDisplayAspect] = useState<string>("1 / 1");
+  const [geminiAspect, setGeminiAspect] = useState<string>("1:1");
   const [enhancing, setEnhancing] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -418,6 +523,10 @@ export default function HomePage() {
     if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
     const savedEngine = localStorage.getItem(LS_ENGINE);
     if (savedEngine === "openai" || savedEngine === "gemini") setAiEngine(savedEngine);
+    const savedGeminiAspect = localStorage.getItem("imagegen_gemini_aspect");
+    if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
+    // Load full image history from IndexedDB
+    void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
   }, []);
 
   /* Theme */
@@ -435,6 +544,11 @@ export default function HomePage() {
   useEffect(() => {
     try { localStorage.setItem(LS_ENGINE, aiEngine); } catch {}
   }, [aiEngine]);
+
+  /* Gemini aspect */
+  useEffect(() => {
+    try { localStorage.setItem("imagegen_gemini_aspect", geminiAspect); } catch {}
+  }, [geminiAspect]);
 
   /* Cleanup async UI work on unmount */
   useEffect(() => {
@@ -579,7 +693,7 @@ export default function HomePage() {
     setImages([]);
     setElapsed(null);
     setShowPromptHistory(false);
-    setDisplayAspect(effectiveAspect);
+    setDisplayAspect(aiEngine === "gemini" ? toDisplayAspect(geminiAspect) : toDisplayAspect(effectiveAspect));
 
     setElapsed(0);
     const start = Date.now();
@@ -591,7 +705,7 @@ export default function HomePage() {
       const apiPath = aiEngine === "gemini" ? "/api/gemini/generate" : "/api/generate";
       const bodyPayload: Record<string, unknown> = {
         prompt: prompt.trim(),
-        size: effectiveSize,
+        size: aiEngine === "gemini" ? "1024x1024" : effectiveSize,
         quality,
         n: count,
         referenceImage: apiRefImage
@@ -599,6 +713,7 @@ export default function HomePage() {
           : undefined,
       };
       if (aiEngine === "openai") bodyPayload.provider = provider;
+      if (aiEngine === "gemini") bodyPayload.aspectRatio = geminiAspect;
       const res = await fetch(apiPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -630,7 +745,7 @@ export default function HomePage() {
         id: String(Date.now()),
         prompt: prompt.trim(),
         aspect,
-        effectiveAspect,
+        effectiveAspect: aiEngine === "gemini" ? geminiAspect : effectiveAspect,
         quality,
         count,
         timestamp: Date.now(),
@@ -638,14 +753,16 @@ export default function HomePage() {
         imageCount: newImages.length,
         referenceName: referenceImage?.name,
         versionLabel: `V${versionCounterRef.current}`,
+        engine: aiEngine,
       };
       const versionEntry: VersionEntry = {
         ...entry,
         images: newImages,
         referenceThumbnail: referenceImage?.thumbnail,
       };
-      setVersions(prev => [versionEntry, ...prev].slice(0, 12));
+      setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
+      void idbSaveVersion(versionEntry);
       setHistory(prev => {
         const next = [entry, ...prev].slice(0, MAX_HISTORY);
         saveHistory(next);
@@ -669,7 +786,7 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, quality, count, aspect, referenceImage, provider, aiEngine, showToast, smartInference]);
+  }, [prompt, loading, quality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
   useEffect(() => {
@@ -738,9 +855,21 @@ export default function HomePage() {
     setAspect(entry.aspect);
     setQuality(entry.quality);
     setCount(entry.count);
-    clearImages();
-    promptRef.current?.focus();
-  }, [clearImages]);
+    // Restore full images from IndexedDB-backed versions list
+    const version = versions.find(v => v.id === entry.id);
+    if (version) {
+      setImages(version.images);
+      setActiveVersionId(version.id);
+      const ratio = version.effectiveAspect ?? entry.aspect;
+      setDisplayAspect(toDisplayAspect(ratio));
+      if (version.engine === "gemini" && version.effectiveAspect) {
+        setGeminiAspect(version.effectiveAspect);
+      }
+    } else {
+      clearImages();
+      promptRef.current?.focus();
+    }
+  }, [versions, clearImages]);
 
   const restoreVersion = useCallback((entry: VersionEntry) => {
     setImages(entry.images);
@@ -750,16 +879,27 @@ export default function HomePage() {
     setCount(entry.count);
     setActiveVersionId(entry.id);
     setError(null);
-    setDisplayAspect(entry.effectiveAspect ?? (entry.aspect === "auto" ? "1:1" : entry.aspect));
+    const ratio = entry.effectiveAspect ?? entry.aspect;
+    setDisplayAspect(toDisplayAspect(ratio));
+    if (entry.engine === "gemini" && entry.effectiveAspect) {
+      setGeminiAspect(entry.effectiveAspect);
+    }
   }, []);
 
   const deleteHistoryEntry = useCallback((id: string) => {
     const next = history.filter(h => h.id !== id);
     saveHistory(next);
     setHistory(next);
+    setVersions(prev => prev.filter(v => v.id !== id));
+    void idbDeleteVersion(id);
   }, [history]);
 
-  const clearAllHistory = useCallback(() => { saveHistory([]); setHistory([]); }, []);
+  const clearAllHistory = useCallback(() => {
+    saveHistory([]);
+    setHistory([]);
+    setVersions([]);
+    void idbClearVersions();
+  }, []);
 
   /* Segmented control style */
   const segBtn = (active: boolean): React.CSSProperties => ({
@@ -1007,32 +1147,36 @@ export default function HomePage() {
 
             {/* Aspect Ratio */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
-                {aspect === "auto" && smartInference && (() => {
-                  const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
-                  return !isDefault ? (
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
-                      → {smartInference.label}
-                    </span>
-                  ) : null;
-                })()}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
-                {ASPECT_OPTIONS.map(opt => {
-                  const active = aspect === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() => { setAspect(opt.value); clearImages(); }}
-                      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
-                    >
-                      <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+              {aiEngine === "gemini" ? (
+                <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
+              ) : (
+                <>
+                  {aspect === "auto" && smartInference && (() => {
+                    const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                    return !isDefault ? (
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
+                        → {smartInference.label}
+                      </span>
+                    ) : null;
+                  })()}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                    {ASPECT_OPTIONS.map(opt => {
+                      const active = aspect === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          onClick={() => { setAspect(opt.value); clearImages(); }}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                        >
+                          <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Quality */}
@@ -1239,7 +1383,7 @@ export default function HomePage() {
                   <div
                     key={img.url ?? (img.b64 ? `b64-${i}-${img.b64.length}` : String(i))}
                     className="img-card"
-                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: CARD_ASPECT[displayAspect], cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
+                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: displayAspect, cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1508,32 +1652,36 @@ export default function HomePage() {
 
           {/* Aspect Ratio */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
-              {aspect === "auto" && smartInference && (() => {
-                const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
-                return !isDefault ? (
-                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
-                    → {smartInference.label}
-                  </span>
-                ) : null;
-              })()}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
-              {ASPECT_OPTIONS.map(opt => {
-                const active = aspect === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    onClick={() => { setAspect(opt.value); clearImages(); }}
-                    style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
-                  >
-                    <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+            <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
+            {aiEngine === "gemini" ? (
+              <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
+            ) : (
+              <>
+                {aspect === "auto" && smartInference && (() => {
+                  const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                  return !isDefault ? (
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                      → {smartInference.label}
+                    </span>
+                  ) : null;
+                })()}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                  {ASPECT_OPTIONS.map(opt => {
+                    const active = aspect === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => { setAspect(opt.value); clearImages(); }}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                      >
+                        <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Quality */}
@@ -1682,6 +1830,67 @@ export default function HomePage() {
   );
 }
 
+/* ── Gemini aspect ratio grid ── */
+function GeminiAspectGrid({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const common  = GEMINI_ASPECT_OPTIONS.filter(o => o.group === "common");
+  const extreme = GEMINI_ASPECT_OPTIONS.filter(o => o.group === "extreme");
+
+  const btn = (opt: { value: string }) => {
+    const active = value === opt.value;
+    const box = ratioBox(opt.value);
+    return (
+      <button
+        key={opt.value}
+        onClick={() => onChange(opt.value)}
+        title={opt.value}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+          padding: "8px 3px",
+          borderRadius: 7,
+          border: "1px solid",
+          borderColor: active ? "var(--accent)" : "var(--border)",
+          background: active ? "var(--accent-dim)" : "transparent",
+          color: active ? "var(--accent)" : "var(--text-muted)",
+          cursor: "pointer",
+          transition: "all 0.15s",
+          fontSize: 10,
+          fontFamily: "var(--font-space)",
+          lineHeight: 1,
+        }}
+      >
+        <div style={{
+          width: box.w,
+          height: box.h,
+          border: "1.5px solid currentColor",
+          borderRadius: 1.5,
+          flexShrink: 0,
+        }} />
+        {opt.value}
+      </button>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+        {common.map(btn)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.06em", flexShrink: 0 }}>3.1 Flash 独有</span>
+        <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
+        {extreme.map(btn)}
+      </div>
+    </div>
+  );
+}
+
 /* ── Sidebar label helper ── */
 function SideLabel({ children, icon }: { children: React.ReactNode; icon?: string }) {
   return (
@@ -1698,7 +1907,7 @@ function GeneratingPreviewCard({
   elapsed,
   dark,
 }: {
-  aspect: AspectRatio;
+  aspect: string;
   index: number;
   elapsed: number | null;
   dark: boolean;
@@ -1708,7 +1917,7 @@ function GeneratingPreviewCard({
       className="generating-card"
       aria-label={`正在生成图片${elapsed !== null ? `，已等待 ${elapsed} 秒` : ""}`}
       style={{
-        aspectRatio: CARD_ASPECT[aspect],
+        aspectRatio: aspect,
         "--preview-delay": `${index * 0.18}s`,
       } as React.CSSProperties}
     >

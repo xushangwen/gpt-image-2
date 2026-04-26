@@ -65,7 +65,7 @@ async function callGemini(
   model: string,
   apiKey: string,
   prompt: string,
-  size: string,
+  aspectRatio: string,
   quality: string,
   referenceImage?: { data: string; mediaType: string }
 ): Promise<{ b64: string; mediaType: string }> {
@@ -81,7 +81,6 @@ async function callGemini(
   }
   parts.push({ text: prompt });
 
-  const aspectRatio = PIXEL_SIZE_TO_ASPECT[size] ?? "1:1";
   const imageSize = QUALITY_TO_IMAGE_SIZE[quality] ?? "1K";
 
   const body = {
@@ -156,6 +155,7 @@ export async function POST(req: NextRequest) {
       size?: unknown;
       quality?: unknown;
       n?: unknown;
+      aspectRatio?: unknown;
       referenceImage?: { data?: string; mediaType?: string; name?: string };
     };
     try {
@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
       throw new HttpError("请求体不是有效的 JSON", 400);
     }
 
-    const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
+    const { prompt, size = "1024x1024", quality = "high", n = 1, aspectRatio, referenceImage } = raw;
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);
@@ -197,6 +197,11 @@ export async function POST(req: NextRequest) {
     const apiKey = getApiKey();
     const model = getModel();
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
+    // aspectRatio from payload takes priority; fall back to pixel-size conversion
+    const resolvedAspect =
+      typeof aspectRatio === "string" && aspectRatio.includes(":")
+        ? aspectRatio
+        : (PIXEL_SIZE_TO_ASPECT[sizeStr] ?? "1:1");
 
     const startedAt = Date.now();
     console.info(
@@ -205,14 +210,14 @@ export async function POST(req: NextRequest) {
       `size=${sizeStr}`,
       `quality=${quality}`,
       `imageSize=${QUALITY_TO_IMAGE_SIZE[quality]}`,
-      `aspectRatio=${PIXEL_SIZE_TO_ASPECT[sizeStr] ?? "1:1"}`,
+      `aspectRatio=${resolvedAspect}`,
       `reference=${parsedRef ? "yes" : "no"}`,
       `model=${model}`
     );
 
     const results = await Promise.allSettled(
       Array.from({ length: count }, () =>
-        callGemini(model, apiKey, prompt.trim(), sizeStr, quality, parsedRef)
+        callGemini(model, apiKey, prompt.trim(), resolvedAspect, quality, parsedRef)
       )
     );
 
