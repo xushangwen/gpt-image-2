@@ -1373,11 +1373,14 @@ export default function HomePage() {
       <div
         ref={settingsSheetRef}
         className={`mobile-settings-sheet${mobileSettingsOpen ? " mobile-open" : ""}`}
+        style={{
+          backdropFilter: dark ? "blur(8px) saturate(140%)" : "blur(8px) saturate(120%)",
+          WebkitBackdropFilter: dark ? "blur(8px) saturate(140%)" : "blur(8px) saturate(120%)",
+        }}
         role="dialog"
         aria-modal={mobileSettingsOpen}
         aria-labelledby="mobile-settings-title"
         aria-hidden={!mobileSettingsOpen}
-        style={{ backdropFilter: "blur(40px) saturate(180%)", WebkitBackdropFilter: "blur(40px) saturate(180%)" }}
       >
         <div className="mobile-settings-panel">
         <div className="mobile-settings-header">
