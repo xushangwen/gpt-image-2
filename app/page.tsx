@@ -486,7 +486,8 @@ export default function HomePage() {
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<string>("1 / 1");
-  const [geminiAspect, setGeminiAspect] = useState<string>("1:1");
+  const [geminiAspect, setGeminiAspect] = useState<string>("16:9");
+  const [geminiQuality, setGeminiQuality] = useState<Quality>("medium");
   const [enhancing, setEnhancing] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -525,6 +526,10 @@ export default function HomePage() {
     if (savedEngine === "openai" || savedEngine === "gemini") setAiEngine(savedEngine);
     const savedGeminiAspect = localStorage.getItem("imagegen_gemini_aspect");
     if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
+    const savedGeminiQuality = localStorage.getItem("imagegen_gemini_quality");
+    if (savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
+      setGeminiQuality(savedGeminiQuality);
+    }
     // Load full image history from IndexedDB
     void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
   }, []);
@@ -549,6 +554,11 @@ export default function HomePage() {
   useEffect(() => {
     try { localStorage.setItem("imagegen_gemini_aspect", geminiAspect); } catch {}
   }, [geminiAspect]);
+
+  /* Gemini quality */
+  useEffect(() => {
+    try { localStorage.setItem("imagegen_gemini_quality", geminiQuality); } catch {}
+  }, [geminiQuality]);
 
   /* Cleanup async UI work on unmount */
   useEffect(() => {
@@ -706,7 +716,7 @@ export default function HomePage() {
       const bodyPayload: Record<string, unknown> = {
         prompt: prompt.trim(),
         size: aiEngine === "gemini" ? "1024x1024" : effectiveSize,
-        quality,
+        quality: aiEngine === "gemini" ? geminiQuality : quality,
         n: count,
         referenceImage: apiRefImage
           ? { data: apiRefImage.data, mediaType: apiRefImage.mediaType, name: referenceImage!.name }
@@ -746,7 +756,7 @@ export default function HomePage() {
         prompt: prompt.trim(),
         aspect,
         effectiveAspect: aiEngine === "gemini" ? geminiAspect : effectiveAspect,
-        quality,
+        quality: aiEngine === "gemini" ? geminiQuality : quality,
         count,
         timestamp: Date.now(),
         thumbnail,
@@ -786,7 +796,7 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, quality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
+  }, [prompt, loading, quality, geminiQuality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
   useEffect(() => {
@@ -853,7 +863,8 @@ export default function HomePage() {
   const restoreHistory = useCallback((entry: HistoryEntry) => {
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
-    setQuality(entry.quality);
+    if (entry.engine === "gemini") setGeminiQuality(entry.quality as Quality);
+    else setQuality(entry.quality);
     setCount(entry.count);
     // Restore full images from IndexedDB-backed versions list
     const version = versions.find(v => v.id === entry.id);
@@ -875,7 +886,8 @@ export default function HomePage() {
     setImages(entry.images);
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
-    setQuality(entry.quality);
+    if (entry.engine === "gemini") setGeminiQuality(entry.quality as Quality);
+    else setQuality(entry.quality);
     setCount(entry.count);
     setActiveVersionId(entry.id);
     setError(null);
@@ -1184,7 +1196,7 @@ export default function HomePage() {
               <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
               <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
                 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
-                  <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <button key={opt.value} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                     <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
                   </button>
                 ))}

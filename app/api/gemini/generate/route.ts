@@ -74,8 +74,9 @@ async function callGemini(
   quality: string,
   referenceImage?: { data: string; mediaType: string }
 ): Promise<{ b64: string; mediaType: string }> {
+  // 官方文档要求：文字在前，图片在后
   const parts: GeminiPart[] = [];
-
+  parts.push({ text: prompt });
   if (referenceImage) {
     parts.push({
       inlineData: {
@@ -84,18 +85,19 @@ async function callGemini(
       },
     });
   }
-  parts.push({ text: prompt });
 
   const imageSize = QUALITY_TO_IMAGE_SIZE[quality] ?? "1K";
+
+  // 垫图模式：不传 aspectRatio，避免与参考图构图冲突；仅传 imageSize 控制分辨率
+  const imageConfig = referenceImage
+    ? { imageSize }
+    : { aspectRatio, imageSize };
 
   const body = {
     contents: [{ parts }],
     generationConfig: {
       responseModalities: ["TEXT", "IMAGE"],
-      imageConfig: {
-        aspectRatio,
-        imageSize,
-      },
+      imageConfig,
     },
   };
 
