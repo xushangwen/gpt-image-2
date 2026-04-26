@@ -193,70 +193,38 @@ async function createHistoryThumbnail(img: ImageResult) {
   return createThumbnail(imageSrc(img));
 }
 
+function scaleImageToCanvas(img: HTMLImageElement, maxDim: number): HTMLCanvasElement {
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.naturalWidth * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 async function compressForStorage(
   file: File,
   maxDim = 1200
 ): Promise<{ dataUrl: string; mediaType: string; width: number; height: number; size: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const { naturalWidth: w, naturalHeight: h } = img;
-      const scale = Math.min(1, maxDim / Math.max(w, h));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(w * scale);
-      canvas.height = Math.round(h * scale);
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error("压缩失败")); return; }
-          const reader = new FileReader();
-          reader.onload = () =>
-            resolve({
-              dataUrl: String(reader.result),
-              mediaType: "image/jpeg",
-              width: canvas.width,
-              height: canvas.height,
-              size: blob.size,
-            });
-          reader.onerror = () => reject(new Error("读取失败"));
-          reader.readAsDataURL(blob);
-        },
-        "image/jpeg",
-        0.92
-      );
-    };
-    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("图片加载失败")); };
-    img.src = objectUrl;
-  });
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await imageElementFromSrc(objectUrl);
+    const canvas = scaleImageToCanvas(img, maxDim);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    return { dataUrl, mediaType: "image/jpeg", width: canvas.width, height: canvas.height, size: Math.round(dataUrl.length * 0.75) };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function compressReferenceForApi(referenceImage: ReferenceImage): Promise<{ data: string; mediaType: string }> {
-  const MAX_DIM = 1536;
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const scale = Math.min(1, MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.naturalWidth * scale);
-      canvas.height = Math.round(img.naturalHeight * scale);
-      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType }); return; }
-          const reader = new FileReader();
-          reader.onload = () => resolve({ data: dataUrlToBase64(String(reader.result)), mediaType: "image/jpeg" });
-          reader.onerror = () => resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType });
-          reader.readAsDataURL(blob);
-        },
-        "image/jpeg",
-        0.85
-      );
-    };
-    img.onerror = () => resolve({ data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType });
-    img.src = referenceImage.dataUrl;
-  });
+  try {
+    const img = await imageElementFromSrc(referenceImage.dataUrl);
+    const canvas = scaleImageToCanvas(img, 1536);
+    return { data: dataUrlToBase64(canvas.toDataURL("image/jpeg", 0.85)), mediaType: "image/jpeg" };
+  } catch {
+    return { data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType };
+  }
 }
 
 /* ── Smart aspect inference ── */
