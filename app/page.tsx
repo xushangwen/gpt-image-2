@@ -6,6 +6,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
 type Quality = "low" | "medium" | "high";
 type ProviderChoice = "tuzi" | "bltcy";
+type AIEngine = "openai" | "gemini";
 type ImageResult = { b64?: string; url?: string; mediaType: string };
 type ReferenceImage = {
   name: string;
@@ -50,6 +51,12 @@ const QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
   { label: "高", value: "high",   icon: "ri-signal-wifi-3-fill" },
 ];
 
+const GEMINI_QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
+  { label: "1K", value: "low",    icon: "ri-signal-wifi-1-fill" },
+  { label: "2K", value: "medium", icon: "ri-signal-wifi-2-fill" },
+  { label: "4K", value: "high",   icon: "ri-signal-wifi-3-fill" },
+];
+
 const COUNT_OPTIONS: { n: number; icon: string }[] = [
   { n: 1, icon: "ri-image-line" },
   { n: 2, icon: "ri-gallery-line" },
@@ -66,6 +73,7 @@ const CARD_ASPECT: Record<AspectRatio, string> = {
 const LS_HISTORY = "imagegen_history_v2";
 const LS_PROMPTS = "imagegen_prompts_v2";
 const LS_PROVIDER = "imagegen_provider";
+const LS_ENGINE = "imagegen_engine";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
 const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
@@ -358,6 +366,7 @@ export default function HomePage() {
   const [count, setCount] = useState(1);
   const [dark, setDark] = useState(true);
   const [provider, setProvider] = useState<ProviderChoice>("tuzi");
+  const [aiEngine, setAiEngine] = useState<AIEngine>("openai");
   const [loading, setLoading] = useState(false);
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -407,6 +416,8 @@ export default function HomePage() {
     else setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
     const savedProvider = localStorage.getItem(LS_PROVIDER);
     if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
+    const savedEngine = localStorage.getItem(LS_ENGINE);
+    if (savedEngine === "openai" || savedEngine === "gemini") setAiEngine(savedEngine);
   }, []);
 
   /* Theme */
@@ -419,6 +430,11 @@ export default function HomePage() {
   useEffect(() => {
     try { localStorage.setItem(LS_PROVIDER, provider); } catch {}
   }, [provider]);
+
+  /* AI Engine */
+  useEffect(() => {
+    try { localStorage.setItem(LS_ENGINE, aiEngine); } catch {}
+  }, [aiEngine]);
 
   /* Cleanup async UI work on unmount */
   useEffect(() => {
@@ -572,19 +588,21 @@ export default function HomePage() {
 
     try {
       const apiRefImage = referenceImage ? await compressReferenceForApi(referenceImage) : undefined;
-      const res = await fetch("/api/generate", {
+      const apiPath = aiEngine === "gemini" ? "/api/gemini/generate" : "/api/generate";
+      const bodyPayload: Record<string, unknown> = {
+        prompt: prompt.trim(),
+        size: effectiveSize,
+        quality,
+        n: count,
+        referenceImage: apiRefImage
+          ? { data: apiRefImage.data, mediaType: apiRefImage.mediaType, name: referenceImage!.name }
+          : undefined,
+      };
+      if (aiEngine === "openai") bodyPayload.provider = provider;
+      const res = await fetch(apiPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          size: effectiveSize,
-          quality,
-          n: count,
-          provider,
-          referenceImage: apiRefImage
-            ? { data: apiRefImage.data, mediaType: apiRefImage.mediaType, name: referenceImage!.name }
-            : undefined,
-        }),
+        body: JSON.stringify(bodyPayload),
         signal: controller.signal,
       });
       const rawText = await res.text();
@@ -651,7 +669,7 @@ export default function HomePage() {
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
-  }, [prompt, loading, quality, count, aspect, referenceImage, provider, showToast, smartInference]);
+  }, [prompt, loading, quality, count, aspect, referenceImage, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
   useEffect(() => {
@@ -784,35 +802,70 @@ export default function HomePage() {
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* 线路切换 */}
+          {/* AI 引擎切换 */}
           <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-            {(["tuzi", "bltcy"] as const).map((p) => {
-              const active = provider === p;
+            {(["openai", "gemini"] as const).map((eng, i) => {
+              const active = aiEngine === eng;
               return (
                 <button
-                  key={p}
-                  onClick={() => setProvider(p)}
-                  title={PROVIDER_LABELS[p].desc}
+                  key={eng}
+                  onClick={() => setAiEngine(eng)}
+                  title={eng === "openai" ? "GPT-Image-2" : "Google Gemini"}
                   style={{
                     padding: "4px 10px",
                     height: 28,
                     fontSize: 11,
                     fontFamily: "var(--font-space)",
                     border: "none",
-                    borderLeft: p === "bltcy" ? "1px solid var(--border)" : "none",
+                    borderLeft: i > 0 ? "1px solid var(--border)" : "none",
                     background: active ? "var(--accent-dim)" : "transparent",
                     color: active ? "var(--accent)" : "var(--text-muted)",
                     cursor: "pointer",
                     transition: "all 0.15s",
                     fontWeight: active ? 500 : 400,
                     lineHeight: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
                 >
-                  {PROVIDER_LABELS[p].name}
+                  <i className={eng === "openai" ? "ri-openai-line" : "ri-google-line"} style={{ fontSize: 12, lineHeight: 1 }} />
+                  {eng === "openai" ? "GPT" : "Gemini"}
                 </button>
               );
             })}
           </div>
+          {/* 线路切换（仅 OpenAI 模式可见） */}
+          {aiEngine === "openai" && (
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+              {(["tuzi", "bltcy"] as const).map((p) => {
+                const active = provider === p;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setProvider(p)}
+                    title={PROVIDER_LABELS[p].desc}
+                    style={{
+                      padding: "4px 10px",
+                      height: 28,
+                      fontSize: 11,
+                      fontFamily: "var(--font-space)",
+                      border: "none",
+                      borderLeft: p === "bltcy" ? "1px solid var(--border)" : "none",
+                      background: active ? "var(--accent-dim)" : "transparent",
+                      color: active ? "var(--accent)" : "var(--text-muted)",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      fontWeight: active ? 500 : 400,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {PROVIDER_LABELS[p].name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <span className="header-qs-label" style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
             QY.Studio
           </span>
@@ -984,9 +1037,9 @@ export default function HomePage() {
 
             {/* Quality */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <SideLabel icon="ri-hd-line">画质</SideLabel>
+              <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
               <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                {QUALITY_OPTIONS.map((opt, i) => (
+                {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
                   <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                     <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
                   </button>
@@ -1485,9 +1538,9 @@ export default function HomePage() {
 
           {/* Quality */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <SideLabel icon="ri-hd-line">画质</SideLabel>
+            <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
             <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-              {QUALITY_OPTIONS.map((opt, i) => (
+              {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
                 <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                   <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
                 </button>
