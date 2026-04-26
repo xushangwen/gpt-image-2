@@ -54,10 +54,15 @@ interface GeminiPart {
   inline_data?: GeminiInlineData;
 }
 
+interface GeminiCandidate {
+  content?: { parts?: GeminiPart[] };
+  finishReason?: string;
+  safetyRatings?: Array<{ category: string; probability: string }>;
+}
+
 interface GeminiResponse {
-  candidates?: Array<{
-    content?: { parts?: GeminiPart[] };
-  }>;
+  candidates?: GeminiCandidate[];
+  promptFeedback?: { blockReason?: string; safetyRatings?: unknown[] };
   error?: { message?: string; code?: number; status?: string };
 }
 
@@ -137,7 +142,27 @@ async function callGemini(
     throw new Error("Gemini API 返回了无法解析的数据");
   }
 
-  const parts2 = data.candidates?.[0]?.content?.parts ?? [];
+  // 200 响应体内仍可能嵌有 error 字段
+  if (data.error) {
+    throw new Error(data.error.message ?? `Gemini API 错误 (code=${data.error.code ?? "unknown"})`);
+  }
+
+  const candidate = data.candidates?.[0];
+  const blockReason = data.promptFeedback?.blockReason;
+  const finishReason = candidate?.finishReason;
+
+  // 详细诊断日志，在 Vercel Function Logs 中可见
+  console.info("[gemini/generate] response structure:", JSON.stringify({
+    candidatesCount: data.candidates?.length ?? 0,
+    finishReason,
+    blockReason,
+    partsCount: candidate?.content?.parts?.length ?? 0,
+    partTypes: candidate?.content?.parts?.map(p =>
+      p.inlineData ?? p.inline_data ? "image" : p.text ? `text(${p.text.slice(0, 80)})` : "unknown"
+    ) ?? [],
+  }));
+
+  const parts2 = candidate?.content?.parts ?? [];
   for (const part of parts2) {
     const inline = part.inlineData ?? part.inline_data;
     if (inline?.data) {
@@ -145,6 +170,21 @@ async function callGemini(
     }
   }
 
+  // 构造有意义的错误信息
+  if (blockReason) {
+    throw new Error(`内容被安全过滤拦截 (blockReason=${blockReason})`);
+  }
+  if (finishReason && finishReason !== "STOP") {
+    throw new Error(`Gemini 未完成图像生成 (finishReason=${finishReason})`);
+  }
+  if (!data.candidates?.length) {
+    throw new Error("Gemini 返回空 candidates，请检查 API Key 权限或账户配额");
+  }
+  // 如果有文字内容，提取前 120 字作为线索
+  const textHint = parts2.find(p => p.text)?.text?.slice(0, 120);
+  if (textHint) {
+    throw new Error(`Gemini 返回文字而非图像："${textHint}"（请确认模型支持图像生成）`);
+  }
   throw new Error("Gemini API 未返回图像，请检查 API Key 和模型配置");
 }
 
