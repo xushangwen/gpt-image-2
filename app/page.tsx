@@ -68,7 +68,7 @@ const LS_PROMPTS = "imagegen_prompts_v2";
 const LS_PROVIDER = "imagegen_provider";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
-const MAX_REFERENCE_SIZE = 6 * 1024 * 1024;
+const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
 const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
   tuzi: { name: "线路一", desc: "兔子中转" },
@@ -191,6 +191,45 @@ function dataUrlToBase64(dataUrl: string) {
 
 async function createHistoryThumbnail(img: ImageResult) {
   return createThumbnail(imageSrc(img));
+}
+
+async function compressForStorage(
+  file: File,
+  maxDim = 1200
+): Promise<{ dataUrl: string; mediaType: string; width: number; height: number; size: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const { naturalWidth: w, naturalHeight: h } = img;
+      const scale = Math.min(1, maxDim / Math.max(w, h));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error("压缩失败")); return; }
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              dataUrl: String(reader.result),
+              mediaType: "image/jpeg",
+              width: canvas.width,
+              height: canvas.height,
+              size: blob.size,
+            });
+          reader.onerror = () => reject(new Error("读取失败"));
+          reader.readAsDataURL(blob);
+        },
+        "image/jpeg",
+        0.92
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("图片加载失败")); };
+    img.src = objectUrl;
+  });
 }
 
 async function compressReferenceForApi(referenceImage: ReferenceImage): Promise<{ data: string; mediaType: string }> {
@@ -368,6 +407,7 @@ export default function HomePage() {
   const [displayAspect, setDisplayAspect] = useState<AspectRatio>("1:1");
   const [enhancing, setEnhancing] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const versionCounterRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -465,32 +505,45 @@ export default function HomePage() {
       return;
     }
     if (file.size > MAX_REFERENCE_SIZE) {
-      showToast("参考图不能超过 6 MB", "error");
+      showToast("参考图不能超过 20 MB", "error");
       return;
     }
 
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      const [thumbnail, dims] = await Promise.all([
-        createThumbnail(dataUrl, 320),
-        getImageDimensions(dataUrl),
-      ]);
+      const compressed = await compressForStorage(file);
+      const thumbnail = await createThumbnail(compressed.dataUrl, 320);
       setReferenceImage({
         name: file.name,
-        dataUrl,
-        thumbnail: thumbnail || dataUrl,
-        mediaType: file.type,
-        size: file.size,
-        width: dims.width,
-        height: dims.height,
+        dataUrl: compressed.dataUrl,
+        thumbnail: thumbnail || compressed.dataUrl,
+        mediaType: compressed.mediaType,
+        size: compressed.size,
+        width: compressed.width,
+        height: compressed.height,
       });
-      showToast("参考图已加入");
+      showToast(`参考图已加入 · ${compressed.width}×${compressed.height}`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "参考图读取失败", "error");
     } finally {
       if (referenceInputRef.current) referenceInputRef.current.value = "";
     }
   }, [showToast]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.types.includes("Files")) setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) void handleReferenceUpload(file);
+  }, [handleReferenceUpload]);
 
   const enhancePrompt = useCallback(async () => {
     if (!prompt.trim()) {
@@ -1098,7 +1151,19 @@ export default function HomePage() {
         </aside>
 
         {/* ── Main Preview Area ── */}
-        <main className="layout-main" style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, overflow: "auto", gap: 22 }}>
+        <main
+          className="layout-main"
+          style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 32, overflow: "auto", gap: 22, position: "relative" }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {dragOver && (
+            <div style={{ position: "absolute", inset: 0, zIndex: 20, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "var(--accent-dim)", border: "2px dashed var(--accent)", borderRadius: 0, pointerEvents: "none" }}>
+              <i className="ri-image-add-line" style={{ fontSize: 40, lineHeight: 1, color: "var(--accent)" }} />
+              <p style={{ fontSize: 14, fontWeight: 500, color: "var(--accent)" }}>松手添加参考图</p>
+            </div>
+          )}
 
           {/* Loading skeleton */}
           {loading && (
