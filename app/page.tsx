@@ -104,8 +104,10 @@ const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = 
 };
 
 /* ── Utils ── */
-function imageSrc(img: ImageResult) {
-  return img.b64 ? `data:${img.mediaType};base64,${img.b64}` : img.url!;
+function imageSrc(img: ImageResult): string | undefined {
+  if (img.b64) return `data:${img.mediaType};base64,${img.b64}`;
+  if (img.url) return img.url;
+  return undefined;
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -160,7 +162,9 @@ async function downloadImage(img: ImageResult, index: number) {
     return;
   }
 
-  const loaded = await imageElementFromSrc(imageSrc(img));
+  const src = imageSrc(img);
+  if (!src) throw new Error("图片数据为空，无法下载");
+  const loaded = await imageElementFromSrc(src);
   const canvas = document.createElement("canvas");
   canvas.width = loaded.naturalWidth;
   canvas.height = loaded.naturalHeight;
@@ -185,7 +189,8 @@ function createThumbnail(src: string, maxW = 200): Promise<string> {
       }
     };
     img.onerror = () => resolve("");
-    img.crossOrigin = "anonymous";
+    // data: URL 不需要 crossOrigin，设了反而在部分浏览器会触发 tainted canvas
+    if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
     img.src = src;
   });
 }
@@ -218,7 +223,8 @@ function dataUrlToBase64(dataUrl: string) {
 }
 
 async function createHistoryThumbnail(img: ImageResult) {
-  return createThumbnail(imageSrc(img));
+  const src = imageSrc(img);
+  return src ? createThumbnail(src) : "";
 }
 
 function scaleImageToCanvas(img: HTMLImageElement, maxDim: number): HTMLCanvasElement {
@@ -839,11 +845,13 @@ export default function HomePage() {
         return;
       }
 
+      const imgSrc = imageSrc(img);
+      if (!imgSrc) throw new Error("图片数据为空，无法复制");
       const image = new Image();
       await new Promise<void>((resolve, reject) => {
         image.onload = () => resolve();
         image.onerror = reject;
-        image.src = imageSrc(img);
+        image.src = imgSrc;
       });
       const canvas = document.createElement("canvas");
       canvas.width = image.naturalWidth;
@@ -1391,15 +1399,24 @@ export default function HomePage() {
                 className="img-grid"
                 style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 620 : 400 }}
               >
-                {images.map((img, i) => (
+                {images.map((img, i) => {
+                  const src = imageSrc(img);
+                  return (
                   <div
                     key={img.url ?? (img.b64 ? `b64-${i}-${img.b64.length}` : String(i))}
                     className="img-card"
                     style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: displayAspect, cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={imageSrc(img)} alt={`${prompt} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                    {src ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={src} alt={`${prompt} ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--text-muted)" }}>
+                        <i className="ri-image-2-line" style={{ fontSize: 28, lineHeight: 1 }} />
+                        <span style={{ fontSize: 12 }}>图片数据异常</span>
+                      </div>
+                    )}
                     <div
                       className="img-overlay"
                       style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", gap: 5, padding: 10, background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)" }}
@@ -1418,7 +1435,8 @@ export default function HomePage() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Action bar */}
@@ -1476,8 +1494,14 @@ export default function HomePage() {
                             textAlign: "left",
                           }}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={version.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                          {version.thumbnail ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={version.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                          ) : (
+                            <div style={{ width: 34, height: 34, borderRadius: 6, flexShrink: 0, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <i className="ri-image-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
+                            </div>
+                          )}
                           <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                             <span style={{ fontSize: 12, fontWeight: 500, fontFamily: "var(--font-space)" }}>{version.versionLabel}</span>
                             <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1780,13 +1804,15 @@ export default function HomePage() {
           style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(14px)", animation: "fadeIn 0.15s ease" }}
           onClick={() => setLightboxIdx(null)}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageSrc(images[lightboxIdx])}
-            alt="大图预览"
-            style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 14, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
-            onClick={e => e.stopPropagation()}
-          />
+          {imageSrc(images[lightboxIdx]) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageSrc(images[lightboxIdx])}
+              alt="大图预览"
+              style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 14, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
+              onClick={e => e.stopPropagation()}
+            />
+          ) : null}
 
           {/* Prev / Next */}
           {images.length > 1 && (

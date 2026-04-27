@@ -170,6 +170,35 @@ function getErrorMessage(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
+// 上游有时会忽略 response_format: b64_json 而返回 URL；在服务端代理 fetch 并转成 base64，
+// 保证前端永远只收到 b64，杜绝 URL 过期 / CORS 导致图裂。
+async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
+  if (img.b64) {
+    console.info("[generate] b64 image, length:", img.b64.length, "mediaType:", img.mediaType);
+    return img;
+  }
+  // url 必须是合法的 http(s) 地址才值得 fetch；空字符串直接跳过
+  if (!img.url || !img.url.startsWith("http")) {
+    console.warn("[generate] image has no valid b64 or url, discarding");
+    return img;
+  }
+  console.info("[generate] url image, fetching:", img.url.slice(0, 100));
+  try {
+    const res = await fetch(img.url, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) {
+      console.warn("[generate] url fetch failed:", res.status);
+      return img;
+    }
+    const mediaType = res.headers.get("content-type")?.split(";")[0].trim() || img.mediaType;
+    const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
+    console.info("[generate] resolved url to b64, length:", b64.length, "mediaType:", mediaType);
+    return { b64, mediaType };
+  } catch (err) {
+    console.warn("[generate] url fetch error:", err instanceof Error ? err.message : String(err));
+    return img;
+  }
+}
+
 async function readJson(req: NextRequest) {
   try {
     return await req.json();
@@ -259,6 +288,17 @@ function imageFromString(value: string): ImageResult | null {
   return null;
 }
 
+// 部分中转（如 bltcy）的 b64_json 字段返回完整 data URL（data:image/png;base64,<data>）
+// 而非纯 base64，此函数统一提取出纯 base64 并去除 MIME 换行
+function normalizeB64(rawB64: string, fallbackMediaType: string): { b64: string; mediaType: string } {
+  const dataUrlMatch = rawB64.match(/^data:(image\/[a-z0-9.+\-]+);base64,/i);
+  if (dataUrlMatch) {
+    console.info("[generate] b64 field contained data URL prefix, stripping:", dataUrlMatch[1]);
+    return { b64: rawB64.slice(dataUrlMatch[0].length).replace(/\s/g, ""), mediaType: dataUrlMatch[1] };
+  }
+  return { b64: rawB64.replace(/\s/g, ""), mediaType: fallbackMediaType };
+}
+
 function collectImageResult(value: unknown): ImageResult | null {
   if (typeof value === "string") return imageFromString(value);
 
@@ -272,19 +312,20 @@ function collectImageResult(value: unknown): ImageResult | null {
 
   if (!isRecord(value)) return null;
 
-  if (typeof value.b64_json === "string") {
-    return { b64: value.b64_json, mediaType: typeof value.mime_type === "string" ? value.mime_type : "image/png" };
+  const fallbackMediaType = typeof value.mime_type === "string" ? value.mime_type : "image/png";
+  if (typeof value.b64_json === "string" && value.b64_json) {
+    return normalizeB64(value.b64_json, fallbackMediaType);
   }
-  if (typeof value.base64 === "string") {
-    return { b64: value.base64, mediaType: typeof value.mime_type === "string" ? value.mime_type : "image/png" };
+  if (typeof value.base64 === "string" && value.base64) {
+    return normalizeB64(value.base64, fallbackMediaType);
   }
-  if (typeof value.url === "string") {
+  if (typeof value.url === "string" && value.url) {
     return imageFromString(value.url) ?? { url: value.url, mediaType: "image/png" };
   }
-  if (typeof value.image_url === "string") {
+  if (typeof value.image_url === "string" && value.image_url) {
     return imageFromString(value.image_url) ?? { url: value.image_url, mediaType: "image/png" };
   }
-  if (isRecord(value.image_url) && typeof value.image_url.url === "string") {
+  if (isRecord(value.image_url) && typeof value.image_url.url === "string" && value.image_url.url) {
     return imageFromString(value.image_url.url) ?? { url: value.image_url.url, mediaType: "image/png" };
   }
 
@@ -642,9 +683,10 @@ export async function POST(req: NextRequest) {
           : generateOne(baseBody, config)
       ))
     );
-    const images = results
-      .filter((result): result is PromiseFulfilledResult<ImageResult> => result.status === "fulfilled")
-      .map(result => result.value);
+    const fulfilled = results.filter(
+      (result): result is PromiseFulfilledResult<ImageResult> => result.status === "fulfilled"
+    );
+    const images = await Promise.all(fulfilled.map(r => resolveImageResult(r.value)));
 
     const failures = results.filter(result => result.status === "rejected");
     console.info(
