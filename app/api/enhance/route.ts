@@ -145,9 +145,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const safePrompt = prompt.trim().replace(/[「」"]/g, " ");
     userContent.push({
       type: "text",
-      text: `用户原始提示词：「${prompt.trim()}」\n\n附加说明：\n${contextLines}\n\n请输出优化后的提示词（内容主体必须是"${prompt.trim()}"，风格从参考图中提炼）：`,
+      text: `用户原始提示词：「${safePrompt}」\n\n附加说明：\n${contextLines}\n\n请输出优化后的提示词（内容主体必须是"${safePrompt}"，风格从参考图中提炼）：`,
     });
 
     const controller = new AbortController();

@@ -62,7 +62,7 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text-primary);
-  font-family: var(--font-cn), var(--font-space), system-ui, sans-serif;
+  font-family: var(--font-cn), var(--font-space), system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background 0.2s, color 0.2s;
 }

@@ -56,8 +56,8 @@ function isBlockedHost(hostname: string) {
     if (inner === "::" || inner === "::1") return true;
     // IPv4-mapped: ::ffff:a.b.c.d
     if (inner.startsWith("::ffff:")) return isBlockedHost(inner.slice(7));
-    // Loopback, ULA (fc00::/7), link-local (fe80::/10)
-    if (/^(::1$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:)/i.test(inner)) return true;
+    // Loopback, ULA (fc00::/7), link-local (fe80::/10), multicast (ff00::/8)
+    if (/^(::1$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:|ff[0-9a-f]{2}:)/i.test(inner)) return true;
     return false;
   }
 
@@ -92,10 +92,30 @@ export async function POST(req: NextRequest) {
 
     let response: Response;
     try {
-      response = await fetch(url, {
-        signal: controller.signal,
-        headers: { Accept: "image/*,*/*;q=0.8" },
-      });
+      // Manual redirect following (max 2 hops) to catch redirect-based SSRF at each step
+      let currentUrl = url.href;
+      let hops = 0;
+      while (true) {
+        response = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: "manual",
+          headers: { Accept: "image/*,*/*;q=0.8" },
+        });
+        if (response.status >= 300 && response.status < 400) {
+          if (hops >= 2) throw new HttpError("重定向次数过多", 400);
+          const location = response.headers.get("location");
+          if (!location) throw new HttpError("重定向地址无效", 400);
+          const next = new URL(location, currentUrl);
+          if (next.protocol !== "https:" && next.protocol !== "http:") {
+            throw new HttpError("仅支持 HTTP(S) 图片下载", 400);
+          }
+          if (isBlockedHost(next.hostname)) throw new HttpError("不支持下载内网地址", 400);
+          currentUrl = next.href;
+          hops++;
+          continue;
+        }
+        break;
+      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         throw new HttpError("图片下载超时，请稍后重试", 504);
@@ -103,14 +123,6 @@ export async function POST(req: NextRequest) {
       throw err;
     } finally {
       clearTimeout(timeoutId);
-    }
-
-    // Guard against redirect-based SSRF (DNS rebinding can't be caught here, but redirects can)
-    if (response.url) {
-      try {
-        const finalHost = new URL(response.url).hostname;
-        if (isBlockedHost(finalHost)) throw new HttpError("不支持下载内网地址", 400);
-      } catch (e) { if (e instanceof HttpError) throw e; }
     }
 
     if (!response.ok) {
@@ -136,7 +148,7 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(bytes.byteLength),
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
         "Cache-Control": "private, max-age=300",
       },
     });

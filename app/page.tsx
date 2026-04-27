@@ -219,7 +219,8 @@ function formatFileSize(size: number) {
 }
 
 function dataUrlToBase64(dataUrl: string) {
-  return dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+  const idx = dataUrl.indexOf(",");
+  return idx !== -1 ? dataUrl.slice(idx + 1) : dataUrl;
 }
 
 async function createHistoryThumbnail(img: ImageResult) {
@@ -388,13 +389,25 @@ function loadHistory(): HistoryEntry[] {
   try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]"); } catch { return []; }
 }
 function saveHistory(entries: HistoryEntry[]) {
-  try { localStorage.setItem(LS_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY))); } catch { /* quota */ }
+  try {
+    localStorage.setItem(LS_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      console.warn("[storage] localStorage 已满，历史记录未保存");
+    }
+  }
 }
 function loadPrompts(): string[] {
   try { return JSON.parse(localStorage.getItem(LS_PROMPTS) ?? "[]"); } catch { return []; }
 }
 function savePrompts(prompts: string[]) {
-  try { localStorage.setItem(LS_PROMPTS, JSON.stringify(prompts.slice(0, MAX_PROMPTS))); } catch { /* quota */ }
+  try {
+    localStorage.setItem(LS_PROMPTS, JSON.stringify(prompts.slice(0, MAX_PROMPTS)));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "QuotaExceededError") {
+      console.warn("[storage] localStorage 已满，提示词历史未保存");
+    }
+  }
 }
 
 function formatTime(ts: number): string {
@@ -830,17 +843,26 @@ export default function HomePage() {
 
   const copyImageToClipboard = useCallback(async (img: ImageResult, idx: number) => {
     setCopyingIdx(idx);
+    const clipboardAvailable = typeof navigator !== "undefined" && !!navigator.clipboard;
     try {
       if (!img.b64 && img.url) {
         try {
           const response = await fetch(img.url, { mode: "cors" });
           const blob = await response.blob();
           if (!blob.type.startsWith("image/")) throw new Error();
-          await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-          showToast("已复制到剪贴板");
+          if (clipboardAvailable) {
+            await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+            showToast("已复制到剪贴板");
+          } else {
+            throw new Error("clipboard unavailable");
+          }
         } catch {
-          await navigator.clipboard.writeText(img.url);
-          showToast("已复制图片链接");
+          if (clipboardAvailable && img.url) {
+            await navigator.clipboard.writeText(img.url);
+            showToast("已复制图片链接");
+          } else {
+            showToast("复制失败，请手动保存图片", "error");
+          }
         }
         return;
       }
@@ -859,6 +881,7 @@ export default function HomePage() {
       canvas.getContext("2d")!.drawImage(image, 0, 0);
       const blob = await new Promise<Blob | null>(r => canvas.toBlob(r, "image/png"));
       if (!blob) throw new Error();
+      if (!clipboardAvailable) throw new Error("clipboard unavailable");
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       showToast("已复制到剪贴板");
     } catch {

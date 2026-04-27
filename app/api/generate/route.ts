@@ -57,7 +57,7 @@ const SIZE_TO_RATIO: Record<string, string> = {
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
-const UPSTREAM_TIMEOUT_MS = 120_000;
+const UPSTREAM_TIMEOUT_MS = 90_000;
 
 class HttpError extends Error {
   constructor(message: string, public status = 500) {

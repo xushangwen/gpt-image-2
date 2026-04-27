@@ -108,10 +108,13 @@ async function callGemini(
   let response: Response;
   try {
     response = await fetch(
-      `${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`,
+      `${GEMINI_API_BASE}/models/${model}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       }
@@ -183,9 +186,9 @@ async function callGemini(
     throw new Error("Gemini 返回空 candidates，请检查 API Key 权限或账户配额");
   }
   // 如果有文字内容，提取前 120 字作为线索
-  const textHint = parts2.find(p => p.text)?.text?.slice(0, 120);
+  const textHint = parts2.find(p => p.text)?.text?.slice(0, 80);
   if (textHint) {
-    throw new Error(`Gemini 返回文字而非图像："${textHint}"（请确认模型支持图像生成）`);
+    throw new Error(`Gemini 返回文字而非图像（请确认模型支持图像生成）`);
   }
   throw new Error("Gemini API 未返回图像，请检查 API Key 和模型配置");
 }
