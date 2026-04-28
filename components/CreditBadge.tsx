@@ -37,7 +37,7 @@ export default function CreditBadge() {
           borderRadius: 8,
           border: `1px solid ${low ? "rgba(251,146,60,0.4)" : "var(--border)"}`,
           background: low ? "rgba(251,146,60,0.08)" : "transparent",
-          color: low ? "#fb923c" : "var(--text-secondary)",
+          color: low ? "#fd7224" : "var(--text-secondary)",
           cursor: "pointer",
           fontSize: 11,
           fontFamily: "var(--font-space)",
@@ -48,7 +48,7 @@ export default function CreditBadge() {
       >
         <i
           className="ri-coins-line"
-          style={{ fontSize: 13, lineHeight: 1, color: low ? "#fb923c" : "var(--text-muted)" }}
+          style={{ fontSize: 13, lineHeight: 1, color: low ? "#fd7224" : "var(--text-muted)" }}
         />
         {credits === null ? "—" : `${credits} 张`}
         {low && (

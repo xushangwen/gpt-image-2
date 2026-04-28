@@ -1,30 +1,30 @@
 @import "tailwindcss";
 
-/* ── 暗色主题（默认）── */
+/* ── 暗色主题（默认）── Clerk Mosaic design tokens + orange accent */
 :root {
-  --bg: #080808;
-  --surface: #0f0f0f;
-  --surface-2: #171717;
-  --surface-3: #202020;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-focus: rgba(255, 255, 255, 0.2);
-  --text-primary: #efefef;
-  --text-secondary: #7a7a7a;
-  --text-muted: #565656;
-  --accent: #ffffff;
-  --accent-dim: rgba(255, 255, 255, 0.07);
-  --accent-glow: rgba(255, 255, 255, 0.06);
-  --btn-text: #000000;
-  --preview-card-bg: #151515;
-  --preview-card-bg-top: #171717;
-  --preview-card-border: rgba(255, 255, 255, 0.055);
-  --preview-card-highlight: rgba(255, 255, 255, 0.045);
-  --preview-label-base: #efefef;
+  --bg: #111113;
+  --surface: #1b1b1f;
+  --surface-2: #232328;
+  --surface-3: #2b2b34;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-focus: rgba(253, 114, 36, 0.55);
+  --text-primary: #f4f4f5;
+  --text-secondary: #8b8b97;
+  --text-muted: #62626d;
+  --accent: #fd7224;
+  --accent-dim: rgba(253, 114, 36, 0.12);
+  --accent-glow: rgba(253, 114, 36, 0.28);
+  --btn-text: #111113;
+  --preview-card-bg: #1b1b1f;
+  --preview-card-bg-top: #232328;
+  --preview-card-border: rgba(255, 255, 255, 0.07);
+  --preview-card-highlight: rgba(255, 255, 255, 0.04);
+  --preview-label-base: #f4f4f5;
   --preview-label-blue: #74d0ff;
   --preview-label-purple: #d8b4fe;
   --preview-label-gold: #ffdf70;
-  --preview-grid-opacity: 0.58;
-  --glass-bg: rgba(18, 18, 18, 0.62);
+  --preview-grid-opacity: 0.55;
+  --glass-bg: rgba(27, 27, 31, 0.82);
   --glass-border: rgba(255, 255, 255, 0.10);
 }
 

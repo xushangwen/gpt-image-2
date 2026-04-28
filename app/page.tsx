@@ -977,28 +977,35 @@ export default function HomePage() {
       /* UserButton popover hover */
       .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover {
         background: rgba(255,255,255,0.07);
-        color: #efefef;
+        color: #f4f4f5;
       }
       .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonText,
       .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonIcon {
-        color: #efefef;
+        color: #f4f4f5;
       }
 
       /* UserProfile interactive states */
-      .cl-modalContent .cl-navbarButton:hover,
-      .cl-modalContent .cl-navbarButton[data-active="true"] {
+      .cl-modalContent .cl-navbarButton:hover {
         background: rgba(255,255,255,0.07);
-        color: #efefef;
+        color: #f4f4f5;
       }
-      .cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText,
-      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText { color: #efefef; }
-      .cl-modalContent .cl-profileSectionPrimaryButton:hover { background: rgba(255,255,255,0.07); color: #efefef; }
-      .cl-modalContent .cl-modalCloseButton:hover { background: rgba(255,255,255,0.07); color: #efefef; }
-      .cl-modalContent .cl-formFieldInput:focus { border-color: rgba(255,255,255,0.2); }
-      .cl-modalContent .cl-formButtonReset:hover { color: #efefef; }
-      .cl-modalContent .cl-menuButton:hover { color: #efefef; }
-      .cl-modalContent .cl-menuItem:hover { background: rgba(255,255,255,0.07); color: #efefef; }
-      .cl-modalContent .cl-profileSectionContent a:hover { color: #efefef; }
+      .cl-modalContent .cl-navbarButton[data-active="true"] {
+        background: rgba(253,114,36,0.12);
+        color: #fd7224;
+      }
+      .cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText { color: #f4f4f5; }
+      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText,
+      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonIcon { color: #fd7224; }
+      .cl-modalContent .cl-profileSectionPrimaryButton:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
+      .cl-modalContent .cl-modalCloseButton:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
+      .cl-modalContent .cl-formFieldInput:focus {
+        box-shadow: 0 0 0 3px rgba(253,114,36,0.18), 0 0 0 1px rgba(253,114,36,0.7) !important;
+        outline: none;
+      }
+      .cl-modalContent .cl-formButtonReset:hover { color: #fd7224; }
+      .cl-modalContent .cl-menuButton:hover { color: #f4f4f5; }
+      .cl-modalContent .cl-menuItem:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
+      .cl-modalContent .cl-profileSectionContent a:hover { color: #fd7224; }
 
       /* Nav icons → Remix Icons (pseudo-elements can't be inline styles) */
       .cl-navbarButtonIcon svg { display: none; }
@@ -1015,15 +1022,17 @@ export default function HomePage() {
       .cl-navbarButton:nth-child(1) .cl-navbarButtonIcon::before { content: "\f264"; }
       .cl-navbarButton:nth-child(2) .cl-navbarButtonIcon::before { content: "\f108"; }
 
-      /* "Secured by Clerk" — filter/opacity can't be set via appearance API */
-      .cl-navbar .cl-poweredBy { display: flex; opacity: 0.3; filter: grayscale(1) brightness(2); }
+      /* "Secured by Clerk" */
+      .cl-navbar .cl-poweredBy { display: flex; opacity: 0.25; filter: grayscale(1) brightness(2); }
 
-      /* Navbar title/subtitle — Clerk doesn't expose these via appearance elements */
-      .cl-navbar h1, .cl-navbar h2, .cl-navbar h3 { color: #efefef; }
-      .cl-navbar p, .cl-navbar [class*="subtitle" i], .cl-navbar [class*="Subtitle"] { color: #7a7a7a; }
+      /* Navbar title/subtitle */
+      .cl-navbar h1, .cl-navbar h2, .cl-navbar h3 { color: #f4f4f5; }
+      .cl-navbar p, .cl-navbar [class*="subtitle" i], .cl-navbar [class*="Subtitle"] { color: #8b8b97; }
 
-      /* Development mode badge — hidden until production instance */
-      .cl-devBadge { display: none !important; }
+      /* Dev badge + "Development mode" text hidden until production instance */
+      .cl-devBadge, [class*="devBadge"] { display: none !important; }
+      .cl-footer p:not(:has(a)),
+      .cl-footerPages p:not(:has(a)) { display: none !important; }
     `}</style>
     {showPaymentModal && (
       <PaymentModal
@@ -1136,13 +1145,13 @@ export default function HomePage() {
           <UserButton
             appearance={{
               variables: {
-                colorBackground:      "#0f0f0f",
-                colorText:            "#efefef",
-                colorTextSecondary:   "#7a7a7a",
-                colorPrimary:         "#efefef",
-                colorInputBackground: "rgba(255,255,255,0.07)",
-                colorNeutral:         "#7a7a7a",
-                borderRadius:         "8px",
+                colorBackground:      "#1b1b1f",
+                colorText:            "#f4f4f5",
+                colorTextSecondary:   "#8b8b97",
+                colorPrimary:         "#fd7224",
+                colorInputBackground: "rgba(255,255,255,0.05)",
+                colorNeutral:         "#8b8b97",
+                borderRadius:         "6px",
                 fontSize:             "13px",
               },
               elements: {
@@ -1151,33 +1160,33 @@ export default function HomePage() {
                   width:        "240px",
                   minWidth:     "240px",
                   maxWidth:     "240px",
-                  background:   "#0f0f0f",
-                  border:       "1px solid rgba(255,255,255,0.07)",
-                  boxShadow:    "0 8px 40px rgba(0,0,0,0.8)",
+                  background:   "#1b1b1f",
+                  border:       "none",
+                  boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
                   borderRadius: "12px",
                   padding:      "6px",
                 },
                 userButtonPopoverMain:    { padding: "0" },
                 userButtonPopoverActions: { padding: "4px 0" },
                 userButtonPopoverActionButton: {
-                  borderRadius: "8px",
+                  borderRadius: "6px",
                   padding:      "9px 12px",
-                  color:        "#efefef",
+                  color:        "#f4f4f5",
                 },
                 userButtonPopoverActionButtonText: {
-                  color:    "#efefef",
+                  color:    "#f4f4f5",
                   fontSize: "13px",
                 },
-                userButtonPopoverActionButtonIcon: { color: "#7a7a7a" },
+                userButtonPopoverActionButtonIcon: { color: "#8b8b97" },
                 userButtonPopoverFooter: { display: "none" },
                 userPreview: { padding: "12px 14px 10px" },
                 userPreviewMainIdentifier: {
-                  color:      "#efefef",
+                  color:      "#f4f4f5",
                   fontSize:   "14px",
                   fontWeight: 600,
                 },
                 userPreviewSecondaryIdentifier: {
-                  color:    "#7a7a7a",
+                  color:    "#8b8b97",
                   fontSize: "12px",
                 },
               },
@@ -1185,90 +1194,93 @@ export default function HomePage() {
             userProfileProps={{
               appearance: {
                 variables: {
-                  colorBackground:      "#0f0f0f",
-                  colorText:            "#efefef",
-                  colorTextSecondary:   "#7a7a7a",
-                  colorPrimary:         "#efefef",
-                  colorInputBackground: "rgba(255,255,255,0.07)",
-                  colorNeutral:         "#7a7a7a",
-                  borderRadius:         "8px",
+                  colorBackground:      "#1b1b1f",
+                  colorText:            "#f4f4f5",
+                  colorTextSecondary:   "#8b8b97",
+                  colorPrimary:         "#fd7224",
+                  colorInputBackground: "rgba(255,255,255,0.05)",
+                  colorNeutral:         "#8b8b97",
+                  borderRadius:         "6px",
                   fontSize:             "13px",
                 },
                 elements: {
                   card: {
-                    background:   "#0f0f0f",
-                    boxShadow:    "0 32px 80px rgba(0,0,0,0.9)",
-                    border:       "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "16px",
+                    background:   "#1b1b1f",
+                    boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
+                    border:       "none",
+                    borderRadius: "12px",
                     overflow:     "hidden",
                   },
                   navbar: {
-                    background:   "#080808",
+                    background:   "#111113",
                     borderRight:  "1px solid rgba(255,255,255,0.07)",
                     padding:      "16px 8px",
                     borderRadius: "0",
                     gap:          "2px",
                   },
                   navbarButton: {
-                    color:        "#7a7a7a",
-                    borderRadius: "8px",
+                    color:        "#8b8b97",
+                    borderRadius: "6px",
                     padding:      "8px 10px",
                     gap:          "8px",
                   },
                   navbarButtonText: {
-                    color:      "#7a7a7a",
+                    color:      "#8b8b97",
                     fontSize:   "13px",
                     fontWeight: 400,
                   },
-                  navbarButtonIcon:  { color: "#7a7a7a" },
-                  pageScrollBox:     { background: "#0f0f0f" },
+                  navbarButtonIcon:  { color: "#8b8b97" },
+                  pageScrollBox:     { background: "#1b1b1f" },
                   profileSectionTitleText: {
-                    color:         "#7a7a7a",
+                    color:         "#62626d",
                     fontSize:      "11px",
                     letterSpacing: "0.05em",
                     textTransform: "uppercase",
                   },
                   profileSectionPrimaryButton: {
                     background:   "transparent",
-                    border:       "1px solid rgba(255,255,255,0.1)",
-                    color:        "#7a7a7a",
-                    borderRadius: "8px",
+                    border:       "none",
+                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.09)",
+                    color:        "#8b8b97",
+                    borderRadius: "6px",
                     padding:      "5px 10px",
                     fontSize:     "12px",
                   },
                   headerTitle: {
-                    color:      "#efefef",
+                    color:      "#f4f4f5",
                     fontSize:   "15px",
                     fontWeight: 600,
                   },
-                  headerSubtitle:   { color: "#7a7a7a", fontSize: "13px" },
+                  headerSubtitle:   { color: "#8b8b97", fontSize: "13px" },
                   dividerLine:      { background: "rgba(255,255,255,0.07)" },
-                  modalCloseButton: { color: "#7a7a7a", borderRadius: "8px" },
+                  modalCloseButton: { color: "#8b8b97", borderRadius: "6px" },
                   formFieldInput: {
-                    background:   "rgba(255,255,255,0.07)",
-                    border:       "1px solid rgba(255,255,255,0.07)",
-                    color:        "#efefef",
-                    borderRadius: "8px",
+                    background:   "rgba(255,255,255,0.05)",
+                    border:       "none",
+                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.09)",
+                    color:        "#f4f4f5",
+                    borderRadius: "6px",
                   },
-                  formFieldLabel:    { color: "#7a7a7a", fontSize: "12px" },
+                  formFieldLabel:    { color: "#8b8b97", fontSize: "12px", fontWeight: 500 },
                   formButtonPrimary: {
-                    background:   "#efefef",
-                    color:        "#080808",
-                    borderRadius: "8px",
+                    background:   "#fd7224",
+                    color:        "#111113",
+                    borderRadius: "6px",
                     fontWeight:   600,
                     fontSize:     "13px",
+                    boxShadow:    "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.2) 0px 2px 3px, rgba(0,0,0,0.24) 0px 1px 1px",
                   },
                   menuList: {
-                    background:   "#0f0f0f",
-                    border:       "1px solid rgba(255,255,255,0.07)",
+                    background:   "#1b1b1f",
+                    border:       "none",
+                    boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
                     borderRadius: "10px",
-                    boxShadow:    "0 8px 30px rgba(0,0,0,0.6)",
                   },
-                  menuItem: { color: "#7a7a7a", borderRadius: "6px" },
+                  menuItem: { color: "#8b8b97", borderRadius: "6px" },
                   badge: {
-                    background: "rgba(255,255,255,0.07)",
-                    color:      "#7a7a7a",
-                    border:     "1px solid rgba(255,255,255,0.07)",
+                    background: "rgba(255,255,255,0.05)",
+                    color:      "#8b8b97",
+                    boxShadow:  "0px 0px 0px 1px rgba(255,255,255,0.09)",
                   },
                 },
               },
@@ -1540,7 +1552,7 @@ export default function HomePage() {
                 justifyContent: "center",
                 gap: 8,
                 transition: "all 0.15s",
-                boxShadow: !prompt.trim() || loading ? "none" : "0 4px 20px var(--accent-glow)",
+                boxShadow: !prompt.trim() || loading ? "none" : "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.22) 0px 3px 6px, rgba(0,0,0,0.28) 0px 1px 2px",
               }}
             >
               {loading ? (
@@ -1855,6 +1867,7 @@ export default function HomePage() {
               transition: "all 0.15s",
               flexShrink: 0,
               letterSpacing: "-0.01em",
+              boxShadow: !prompt.trim() || loading ? "none" : "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.22) 0px 3px 6px, rgba(0,0,0,0.28) 0px 1px 2px",
             }}
           >
             {loading ? (

@@ -147,15 +147,16 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                   marginTop: 16,
                   width: "100%",
                   padding: "12px 0",
-                  borderRadius: 10,
+                  borderRadius: 8,
                   border: "none",
-                  background: "var(--text-primary)",
-                  color: "var(--bg)",
+                  background: "var(--accent)",
+                  color: "var(--btn-text)",
                   fontSize: 14,
                   fontWeight: 600,
                   cursor: loading ? "not-allowed" : "pointer",
                   opacity: loading ? 0.6 : 1,
                   transition: "opacity 0.15s",
+                  boxShadow: "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.2) 0px 2px 3px",
                 }}
               >
                 {loading ? "生成中..." : `生成订单 · ¥${pkg.price_yuan}`}
