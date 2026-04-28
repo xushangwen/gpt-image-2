@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { UserButton } from "@clerk/nextjs";
+import CreditBadge from "@/components/CreditBadge";
+import PaymentModal from "@/components/PaymentModal";
 
 /* ── Types ── */
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
@@ -491,6 +494,8 @@ export default function HomePage() {
   const [provider, setProvider] = useState<ProviderChoice>("tuzi");
   const [aiEngine, setAiEngine] = useState<AIEngine>("openai");
   const [loading, setLoading] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [currentCredits, setCurrentCredits] = useState(0);
   const [images, setImages] = useState<ImageResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState<number | null>(null);
@@ -759,6 +764,12 @@ export default function HomePage() {
           throw new Error("生成服务返回了无法解析的数据");
         }
       }
+      if (res.status === 402) {
+        // Fetch current credits to show in modal
+        fetch("/api/credits").then(r => r.json()).then(d => setCurrentCredits(d.credits_remaining ?? 0)).catch(() => {});
+        setShowPaymentModal(true);
+        return;
+      }
       if (!res.ok) throw new Error(data?.error ?? "生成失败，请重试");
       if (!data?.images?.length) throw new Error("未收到图片数据");
       if (!mountedRef.current) return;
@@ -960,6 +971,64 @@ export default function HomePage() {
 
   return (
     <>
+    <style>{`
+      /* Only hover/focus/pseudo states — static styles are in appearance.elements (inline) */
+
+      /* UserButton popover hover */
+      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover {
+        background: rgba(255,255,255,0.07);
+        color: #efefef;
+      }
+      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonText,
+      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonIcon {
+        color: #efefef;
+      }
+
+      /* UserProfile interactive states */
+      .cl-modalContent .cl-navbarButton:hover,
+      .cl-modalContent .cl-navbarButton[data-active="true"] {
+        background: rgba(255,255,255,0.07);
+        color: #efefef;
+      }
+      .cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText,
+      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText { color: #efefef; }
+      .cl-modalContent .cl-profileSectionPrimaryButton:hover { background: rgba(255,255,255,0.07); color: #efefef; }
+      .cl-modalContent .cl-modalCloseButton:hover { background: rgba(255,255,255,0.07); color: #efefef; }
+      .cl-modalContent .cl-formFieldInput:focus { border-color: rgba(255,255,255,0.2); }
+      .cl-modalContent .cl-formButtonReset:hover { color: #efefef; }
+      .cl-modalContent .cl-menuButton:hover { color: #efefef; }
+      .cl-modalContent .cl-menuItem:hover { background: rgba(255,255,255,0.07); color: #efefef; }
+      .cl-modalContent .cl-profileSectionContent a:hover { color: #efefef; }
+
+      /* Nav icons → Remix Icons (pseudo-elements can't be inline styles) */
+      .cl-navbarButtonIcon svg { display: none; }
+      .cl-navbarButtonIcon {
+        font-family: 'remixicon';
+        font-style: normal;
+        font-size: 15px;
+        line-height: 1;
+        width: 16px; height: 16px;
+        display: flex;
+        align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .cl-navbarButton:nth-child(1) .cl-navbarButtonIcon::before { content: "\f264"; }
+      .cl-navbarButton:nth-child(2) .cl-navbarButtonIcon::before { content: "\f108"; }
+
+      /* "Secured by Clerk" — filter/opacity can't be set via appearance API */
+      .cl-navbar .cl-poweredBy { display: flex; opacity: 0.3; filter: grayscale(1) brightness(2); }
+
+      /* Navbar title/subtitle — Clerk doesn't expose these via appearance elements */
+      .cl-navbar h1, .cl-navbar h2, .cl-navbar h3 { color: #efefef; }
+      .cl-navbar p, .cl-navbar [class*="subtitle" i], .cl-navbar [class*="Subtitle"] { color: #7a7a7a; }
+    `}</style>
+    {showPaymentModal && (
+      <PaymentModal
+        currentCredits={currentCredits}
+        onClose={() => setShowPaymentModal(false)}
+        onOrderCreated={() => {}}
+      />
+    )}
     <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* ── Header ── */}
@@ -1049,6 +1118,7 @@ export default function HomePage() {
               })}
             </div>
           )}
+          <CreditBadge />
           <span className="header-qs-label" style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
             QY.Studio
           </span>
@@ -1060,6 +1130,147 @@ export default function HomePage() {
           >
             <i className={dark ? "ri-sun-line" : "ri-moon-line"} style={{ fontSize: 16, lineHeight: 1 }} />
           </button>
+          <UserButton
+            appearance={{
+              variables: {
+                colorBackground:      "#0f0f0f",
+                colorText:            "#efefef",
+                colorTextSecondary:   "#7a7a7a",
+                colorPrimary:         "#efefef",
+                colorInputBackground: "rgba(255,255,255,0.07)",
+                colorNeutral:         "#7a7a7a",
+                borderRadius:         "8px",
+                fontSize:             "13px",
+              },
+              elements: {
+                userButtonAvatarBox: { width: 28, height: 28 },
+                userButtonPopoverCard: {
+                  width:        "240px",
+                  minWidth:     "240px",
+                  maxWidth:     "240px",
+                  background:   "#0f0f0f",
+                  border:       "1px solid rgba(255,255,255,0.07)",
+                  boxShadow:    "0 8px 40px rgba(0,0,0,0.8)",
+                  borderRadius: "12px",
+                  padding:      "6px",
+                },
+                userButtonPopoverMain:    { padding: "0" },
+                userButtonPopoverActions: { padding: "4px 0" },
+                userButtonPopoverActionButton: {
+                  borderRadius: "8px",
+                  padding:      "9px 12px",
+                  color:        "#efefef",
+                },
+                userButtonPopoverActionButtonText: {
+                  color:    "#efefef",
+                  fontSize: "13px",
+                },
+                userButtonPopoverActionButtonIcon: { color: "#7a7a7a" },
+                userButtonPopoverFooter: { display: "none" },
+                userPreview: { padding: "12px 14px 10px" },
+                userPreviewMainIdentifier: {
+                  color:      "#efefef",
+                  fontSize:   "14px",
+                  fontWeight: 600,
+                },
+                userPreviewSecondaryIdentifier: {
+                  color:    "#7a7a7a",
+                  fontSize: "12px",
+                },
+              },
+            }}
+            userProfileProps={{
+              appearance: {
+                variables: {
+                  colorBackground:      "#0f0f0f",
+                  colorText:            "#efefef",
+                  colorTextSecondary:   "#7a7a7a",
+                  colorPrimary:         "#efefef",
+                  colorInputBackground: "rgba(255,255,255,0.07)",
+                  colorNeutral:         "#7a7a7a",
+                  borderRadius:         "8px",
+                  fontSize:             "13px",
+                },
+                elements: {
+                  card: {
+                    background:   "#0f0f0f",
+                    boxShadow:    "0 32px 80px rgba(0,0,0,0.9)",
+                    border:       "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: "16px",
+                    overflow:     "hidden",
+                  },
+                  navbar: {
+                    background:   "#080808",
+                    borderRight:  "1px solid rgba(255,255,255,0.07)",
+                    padding:      "16px 8px",
+                    borderRadius: "0",
+                    gap:          "2px",
+                  },
+                  navbarButton: {
+                    color:        "#7a7a7a",
+                    borderRadius: "8px",
+                    padding:      "8px 10px",
+                    gap:          "8px",
+                  },
+                  navbarButtonText: {
+                    color:      "#7a7a7a",
+                    fontSize:   "13px",
+                    fontWeight: 400,
+                  },
+                  navbarButtonIcon:  { color: "#7a7a7a" },
+                  pageScrollBox:     { background: "#0f0f0f" },
+                  profileSectionTitleText: {
+                    color:         "#7a7a7a",
+                    fontSize:      "11px",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  },
+                  profileSectionPrimaryButton: {
+                    background:   "transparent",
+                    border:       "1px solid rgba(255,255,255,0.1)",
+                    color:        "#7a7a7a",
+                    borderRadius: "8px",
+                    padding:      "5px 10px",
+                    fontSize:     "12px",
+                  },
+                  headerTitle: {
+                    color:      "#efefef",
+                    fontSize:   "15px",
+                    fontWeight: 600,
+                  },
+                  headerSubtitle:   { color: "#7a7a7a", fontSize: "13px" },
+                  dividerLine:      { background: "rgba(255,255,255,0.07)" },
+                  modalCloseButton: { color: "#7a7a7a", borderRadius: "8px" },
+                  formFieldInput: {
+                    background:   "rgba(255,255,255,0.07)",
+                    border:       "1px solid rgba(255,255,255,0.07)",
+                    color:        "#efefef",
+                    borderRadius: "8px",
+                  },
+                  formFieldLabel:    { color: "#7a7a7a", fontSize: "12px" },
+                  formButtonPrimary: {
+                    background:   "#efefef",
+                    color:        "#080808",
+                    borderRadius: "8px",
+                    fontWeight:   600,
+                    fontSize:     "13px",
+                  },
+                  menuList: {
+                    background:   "#0f0f0f",
+                    border:       "1px solid rgba(255,255,255,0.07)",
+                    borderRadius: "10px",
+                    boxShadow:    "0 8px 30px rgba(0,0,0,0.6)",
+                  },
+                  menuItem: { color: "#7a7a7a", borderRadius: "6px" },
+                  badge: {
+                    background: "rgba(255,255,255,0.07)",
+                    color:      "#7a7a7a",
+                    border:     "1px solid rgba(255,255,255,0.07)",
+                  },
+                },
+              },
+            }}
+          />
         </div>
       </header>
 

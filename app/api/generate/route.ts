@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
+import { getSupabase } from "@/lib/supabase";
 
 export const maxDuration = 300;
 
@@ -174,7 +177,6 @@ function getErrorMessage(err: unknown) {
 // 保证前端永远只收到 b64，杜绝 URL 过期 / CORS 导致图裂。
 async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
   if (img.b64) {
-    console.info("[generate] b64 image, length:", img.b64.length, "mediaType:", img.mediaType);
     return img;
   }
   // url 必须是合法的 http(s) 地址才值得 fetch；空字符串直接跳过
@@ -182,7 +184,6 @@ async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
     console.warn("[generate] image has no valid b64 or url, discarding");
     return img;
   }
-  console.info("[generate] url image, fetching:", img.url.slice(0, 100));
   try {
     const res = await fetch(img.url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) {
@@ -191,7 +192,6 @@ async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
     }
     const mediaType = res.headers.get("content-type")?.split(";")[0].trim() || img.mediaType;
     const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
-    console.info("[generate] resolved url to b64, length:", b64.length, "mediaType:", mediaType);
     return { b64, mediaType };
   } catch (err) {
     console.warn("[generate] url fetch error:", err instanceof Error ? err.message : String(err));
@@ -293,7 +293,6 @@ function imageFromString(value: string): ImageResult | null {
 function normalizeB64(rawB64: string, fallbackMediaType: string): { b64: string; mediaType: string } {
   const dataUrlMatch = rawB64.match(/^data:(image\/[a-z0-9.+\-]+);base64,/i);
   if (dataUrlMatch) {
-    console.info("[generate] b64 field contained data URL prefix, stripping:", dataUrlMatch[1]);
     return { b64: rawB64.slice(dataUrlMatch[0].length).replace(/\s/g, ""), mediaType: dataUrlMatch[1] };
   }
   return { b64: rawB64.replace(/\s/g, ""), mediaType: fallbackMediaType };
@@ -391,7 +390,6 @@ function buildReferenceChatPrompt(prompt: string, size: string, quality: string)
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const startedAt = Date.now();
 
   let response: Response;
   try {
@@ -414,7 +412,6 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -441,7 +438,6 @@ async function editOneViaGenerationsEndpoint(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const startedAt = Date.now();
   const body: Record<string, unknown> = {
     model: config.referenceModel,
     prompt,
@@ -474,7 +470,6 @@ async function editOneViaGenerationsEndpoint(
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream reference generation status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -501,7 +496,6 @@ async function editOneViaImagesEndpoint(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const startedAt = Date.now();
   const bytes = Buffer.from(referenceImage.data!, "base64");
   const extension = getExtension(referenceImage.mediaType!);
   const safeBaseName = referenceImage.name!.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 80) || "reference-image";
@@ -535,7 +529,6 @@ async function editOneViaImagesEndpoint(
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream edit status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -562,7 +555,6 @@ async function editOneViaChatEndpoint(
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-  const startedAt = Date.now();
 
   let response: Response;
   try {
@@ -597,7 +589,6 @@ async function editOneViaChatEndpoint(
   }
 
   const rawText = await response.text();
-  console.info("[generate] upstream reference chat status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
@@ -650,6 +641,24 @@ export async function POST(req: NextRequest) {
     }
 
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
+
+    // ── 积分验证与扣除（先扣后生成，防并发超用）──
+    const { userId } = await auth();
+    if (!userId) throw new HttpError("请先登录", 401);
+
+    let creditsRemaining = await getCreditsOnly(userId);
+    if (creditsRemaining === null) {
+      const user = await currentUser();
+      const email = user?.emailAddresses[0]?.emailAddress ?? "";
+      const credits = await getOrCreateCredits(userId, email);
+      creditsRemaining = credits.credits_remaining;
+    }
+
+    const newBalance = await deductCredits(userId, count);
+    if (newBalance < 0) {
+      throw new HttpError("积分不足，请购买套餐", 402);
+    }
+
     const upstreamSize = getProviderSize(config, size);
     const baseBody = {
       model: config.model,
@@ -659,21 +668,6 @@ export async function POST(req: NextRequest) {
       response_format: "b64_json",
       n: 1,
     };
-
-    const startedAt = Date.now();
-    console.info(
-      "[generate] request:",
-      `provider=${config.provider}`,
-      `count=${count}`,
-      `size=${size}`,
-      `upstreamSize=${upstreamSize}`,
-      `quality=${quality}`,
-      `reference=${parsedReferenceImage ? "yes" : "no"}`,
-      `referenceKind=${config.referenceEndpointKind ?? "none"}`,
-      `model=${parsedReferenceImage ? config.referenceModel : config.model}`,
-      `apiHost=${new URL(config.apiEndpoint).hostname}`,
-      `referenceHost=${config.referenceEndpoint ? new URL(config.referenceEndpoint).hostname : "none"}`
-    );
 
     // 并发生成 count 张，每次独立请求，兼容所有不支持 n>1 的中转
     const results = await Promise.allSettled(
@@ -689,16 +683,16 @@ export async function POST(req: NextRequest) {
     const images = await Promise.all(fulfilled.map(r => resolveImageResult(r.value)));
 
     const failures = results.filter(result => result.status === "rejected");
-    console.info(
-      "[generate] completed:",
-      `ok=${images.length}`,
-      `failed=${failures.length}`,
-      `elapsed=${Date.now() - startedAt}ms`
-    );
 
     if (images.length === 0) {
+      await refundCredits(userId, count);
       const firstReason = failures[0] as PromiseRejectedResult | undefined;
       throw new Error(firstReason ? getErrorMessage(firstReason.reason) : "生成失败，请重试");
+    }
+
+    const failedCount = count - images.length;
+    if (failedCount > 0) {
+      await refundCredits(userId, failedCount);
     }
 
     return NextResponse.json({

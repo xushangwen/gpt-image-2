@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { getOrCreateCredits, getCreditsOnly, deductCredits } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -239,9 +241,25 @@ export async function POST(req: NextRequest) {
       parsedRef = { data: referenceImage.data, mediaType: referenceImage.mediaType };
     }
 
+    // ── 积分验证 ──
+    const { userId } = await auth();
+    if (!userId) throw new HttpError("请先登录", 401);
+
+    let creditsRemaining = await getCreditsOnly(userId);
+    if (creditsRemaining === null) {
+      const user = await currentUser();
+      const email = user?.emailAddresses[0]?.emailAddress ?? "";
+      const credits = await getOrCreateCredits(userId, email);
+      creditsRemaining = credits.credits_remaining;
+    }
+
     const apiKey = getApiKey();
     const model = getModel();
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
+
+    if (creditsRemaining < count) {
+      throw new HttpError("积分不足，请购买套餐", 402);
+    }
     // aspectRatio from payload takes priority; fall back to pixel-size conversion
     const resolvedAspect =
       typeof aspectRatio === "string" && aspectRatio.includes(":")
@@ -289,6 +307,13 @@ export async function POST(req: NextRequest) {
           : String(firstReason.reason)
         : "生成失败，请重试";
       throw new Error(msg);
+    }
+
+    // ── 扣除积分（仅扣成功张数）──
+    try {
+      await deductCredits(userId, images.length);
+    } catch (err) {
+      console.warn("[gemini/generate] deduct credits failed:", err instanceof Error ? err.message : String(err));
     }
 
     return NextResponse.json({
