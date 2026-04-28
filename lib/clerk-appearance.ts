@@ -102,9 +102,10 @@ export const clerkAppearance = {
     identityPreviewText: { color: "var(--text-primary)" },
     identityPreviewEditButton: { color: "var(--accent)" },
     badge: {
-      background: "var(--mosaic-control-bg)",
-      color: "var(--text-secondary)",
-      boxShadow: "0px 0px 0px 1px var(--ck-field-ring)",
+      background: clerkMosaic.color.surface3,
+      color: clerkMosaic.color.text,
+      boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
+      fontSize: "10px",
     },
   },
 } satisfies ClerkAppearance;
@@ -162,14 +163,14 @@ export const signInAppearance = {
     },
     badge: {
       background: clerkMosaic.color.surface3,
-      color: clerkMosaic.color.textSecondary,
+      color: clerkMosaic.color.text,
       boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
       fontSize: "10px",
     },
     footerActionText: {
       color: clerkMosaic.color.textMuted,
-      letterSpacing: "0",
-      wordSpacing: "0",
+      letterSpacing: "-0.01em",
+      wordSpacing: "-0.05em",
     },
     footerActionLink: {
       color: clerkMosaic.color.textSecondary,

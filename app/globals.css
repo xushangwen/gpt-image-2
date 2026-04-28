@@ -833,10 +833,12 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-footer {
   border-top: 1px solid var(--border-soft) !important;
 }
-.cl-footerActionText {
+.cl-footerActionText,
+.cl-footerActionText span,
+.cl-footerActionText * {
   color: var(--text-muted) !important;
-  word-spacing: 0 !important;
-  letter-spacing: normal !important;
+  letter-spacing: -0.01em !important;
+  word-spacing: -0.05em !important;
 }
 .cl-footerActionLink {
   color: var(--text-secondary) !important;
@@ -851,9 +853,10 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-footerPages,
 .cl-navbar .cl-poweredBy {
   display: flex !important;
-  opacity: 0.4 !important;
-  filter: grayscale(1) brightness(2.5) !important;
   justify-content: center !important;
+  color: rgba(255,255,255,0.45) !important;
+  filter: none !important;
+  opacity: 1 !important;
 }
 .cl-devBadge,
 [class*="devBadge"] {
