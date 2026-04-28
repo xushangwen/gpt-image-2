@@ -711,15 +711,19 @@ html, body {
   box-shadow: 0 0 0 3px var(--accent-dim), 0 0 0 1px var(--border-focus) !important;
   outline: none !important;
 }
-.cl-formButtonPrimary {
+.cl-formButtonPrimary,
+html body .cl-formButtonPrimary {
   background: var(--accent) !important;
   background-color: var(--accent) !important;
   color: var(--btn-text) !important;
   -webkit-text-fill-color: var(--btn-text) !important;
   box-shadow: var(--mosaic-primary-shadow) !important;
+  border: none !important;
 }
 /* Clerk v6 uses ::after for the button background layer — override it */
-.cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
+.cl-formButtonPrimary[data-variant="solid"][data-color="primary"],
+html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
+  background: var(--accent) !important;
   background-color: var(--accent) !important;
 }
 .cl-formButtonPrimary[data-variant="solid"][data-color="primary"]::after {
@@ -807,10 +811,11 @@ html, body {
 .cl-modalContent [class*="Subtitle"] {
   color: var(--text-secondary) !important;
 }
-.cl-modalContent .cl-badge {
+.cl-badge {
   background: var(--surface-3) !important;
   color: var(--text-secondary) !important;
   box-shadow: 0 0 0 1px var(--border-soft) !important;
+  font-size: 10px !important;
 }
 .cl-modalContent .cl-navbar [class*="footer" i],
 .cl-modalContent .cl-navbar [class*="powered" i] {
@@ -830,6 +835,8 @@ html, body {
 }
 .cl-footerActionText {
   color: var(--text-muted) !important;
+  word-spacing: 0 !important;
+  letter-spacing: normal !important;
 }
 .cl-footerActionLink {
   color: var(--text-secondary) !important;
@@ -844,8 +851,8 @@ html, body {
 .cl-footerPages,
 .cl-navbar .cl-poweredBy {
   display: flex !important;
-  opacity: 0.25 !important;
-  filter: grayscale(1) brightness(2) !important;
+  opacity: 0.4 !important;
+  filter: grayscale(1) brightness(2.5) !important;
   justify-content: center !important;
 }
 .cl-devBadge,
@@ -867,6 +874,15 @@ html, body {
   display: none !important;
   background: none !important;
 }
+/* OTP / 验证码输入框文字颜色 */
+.cl-otpCodeFieldInput,
+.cl-otpCodeField input {
+  color: var(--text-primary) !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+  caret-color: var(--accent) !important;
+  background: var(--mosaic-control-bg) !important;
+}
+
 .cl-formFieldInput:-webkit-autofill,
 .cl-formFieldInput:-webkit-autofill:hover,
 .cl-formFieldInput:-webkit-autofill:focus {

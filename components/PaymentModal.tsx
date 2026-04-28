@@ -78,8 +78,10 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>
               {step === "select" ? "购买生图次数" : "完成付款"}
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-              当前余额：{currentCredits} 张
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>当前余额</span>
+              <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-space)", lineHeight: 1 }}>{currentCredits}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>张</span>
             </div>
           </div>
           <button
@@ -126,7 +128,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                           {p.name}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-                          {p.credits} 张 · {(p.price_yuan / p.credits * 100).toFixed(0)} 分/张
+                          {p.credits} 张 · <strong style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{(p.price_yuan / p.credits).toFixed(2)}</strong> 元/张
                         </div>
                       </div>
                       <div style={{

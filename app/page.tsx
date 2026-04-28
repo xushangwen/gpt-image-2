@@ -730,6 +730,7 @@ export default function HomePage() {
     setElapsed(null);
     setShowPromptHistory(false);
     setDisplayAspect(aiEngine === "gemini" ? toDisplayAspect(geminiAspect) : toDisplayAspect(effectiveAspect));
+    window.dispatchEvent(new CustomEvent("credits-deduct", { detail: { count } }));
 
     setElapsed(0);
     const start = Date.now();
@@ -805,6 +806,7 @@ export default function HomePage() {
       setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
       void idbSaveVersion(versionEntry);
+      window.dispatchEvent(new CustomEvent("credits-refresh"));
       setHistory(prev => {
         const next = [entry, ...prev].slice(0, MAX_HISTORY);
         saveHistory(next);
@@ -823,6 +825,7 @@ export default function HomePage() {
       if (err instanceof Error && err.name === "AbortError") return;
       if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "未知错误");
+      window.dispatchEvent(new CustomEvent("credits-refresh"));
     } finally {
       if (generateControllerRef.current === controller) generateControllerRef.current = null;
       if (mountedRef.current) setLoading(false);

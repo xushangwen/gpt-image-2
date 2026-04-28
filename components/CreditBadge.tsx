@@ -21,6 +21,20 @@ export default function CreditBadge() {
     fetchCredits();
   }, [fetchCredits]);
 
+  useEffect(() => {
+    const onDeduct = (e: Event) => {
+      const count = (e as CustomEvent<{ count: number }>).detail.count;
+      setCredits(prev => prev !== null ? Math.max(0, prev - count) : prev);
+    };
+    const onRefresh = () => fetchCredits();
+    window.addEventListener("credits-deduct", onDeduct);
+    window.addEventListener("credits-refresh", onRefresh);
+    return () => {
+      window.removeEventListener("credits-deduct", onDeduct);
+      window.removeEventListener("credits-refresh", onRefresh);
+    };
+  }, [fetchCredits]);
+
   const low = credits !== null && credits <= 10;
 
   return (
