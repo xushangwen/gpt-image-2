@@ -100,6 +100,7 @@ const LS_PROVIDER = "imagegen_provider";
 const LS_ENGINE = "imagegen_engine";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
+const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
 const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
 const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
@@ -548,7 +549,7 @@ export default function HomePage() {
     const savedProvider = localStorage.getItem(LS_PROVIDER);
     if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
     const savedEngine = localStorage.getItem(LS_ENGINE);
-    if (savedEngine === "openai" || savedEngine === "gemini") setAiEngine(savedEngine);
+    if (savedEngine === "openai" || (savedEngine === "gemini" && GEMINI_ENABLED)) setAiEngine(savedEngine);
     const savedGeminiAspect = localStorage.getItem("imagegen_gemini_aspect");
     if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
     const savedGeminiQuality = localStorage.getItem("imagegen_gemini_quality");
@@ -1005,7 +1006,7 @@ export default function HomePage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* AI 引擎切换 */}
           <div className="ck-segmented ck-segmented--header" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
-            {(["openai", "gemini"] as const).map((eng, i) => {
+            {(GEMINI_ENABLED ? ["openai", "gemini"] as const : ["openai"] as const).map((eng, i) => {
               const active = aiEngine === eng;
               return (
                 <button
