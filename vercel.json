@@ -1,11 +1,15 @@
 {
   "functions": {
     "app/api/generate/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "regions": ["hkg1"]
     },
     "app/api/gemini/generate/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "regions": ["iad1"]
+    },
+    "app/api/enhance/route.ts": {
+      "regions": ["iad1"]
     }
-  },
-  "regions": ["hkg1"]
+  }
 }
