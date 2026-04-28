@@ -973,6 +973,23 @@ export default function HomePage() {
     transition: "background 0.15s, color 0.15s",
   });
 
+  const sidebarSectionStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: "14px 14px 13px",
+    borderRadius: 10,
+    background: "var(--sidebar-section-bg)",
+    border: "1px solid var(--sidebar-section-border)",
+    boxShadow: "var(--sidebar-section-shadow)",
+  };
+
+  const sidebarSectionBodyStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  };
+
   return (
     <>
     {showPaymentModal && (
@@ -1094,107 +1111,109 @@ export default function HomePage() {
         {/* ── Left Sidebar (desktop only) ── */}
         <aside className="layout-sidebar" style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 60%), var(--surface)", boxShadow: "inset -1px 0 0 var(--border)", overflow: "hidden" }}>
           <div />
-          <div className="layout-sidebar__scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
+          <div className="layout-sidebar__scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
 
             {/* Prompt */}
-            <div className="prompt-area" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div className="prompt-area sidebar-section" style={sidebarSectionStyle}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <SideLabel icon="ri-pencil-line">提示词</SideLabel>
                 <span style={{ fontSize: 11, fontFamily: "var(--font-space)", color: prompt.length >= 4000 ? "var(--error, #f87171)" : prompt.length > 3500 ? "#f59e0b" : "var(--text-muted)" }}>
                   {prompt.length > 3500 ? `${prompt.length}/4000` : prompt.length}
                 </span>
               </div>
-              <div style={{ position: "relative" }}>
-                <textarea
-                  className="ck-textarea"
-                  ref={promptRef}
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                  onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
-                  onFocus={e => {
-                    e.target.style.borderColor = "var(--border-focus)";
-                    if (recentPrompts.length > 0) setShowPromptHistory(true);
-                  }}
-                  onBlur={e => e.target.style.borderColor = "var(--border)"}
-                  placeholder="描述你想生成的图像..."
-                  rows={6}
-                  style={{ width: "100%", resize: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
-                />
+              <div style={sidebarSectionBodyStyle}>
+                <div style={{ position: "relative" }}>
+                  <textarea
+                    className="ck-textarea"
+                    ref={promptRef}
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+                    onFocus={e => {
+                      e.target.style.borderColor = "var(--border-focus)";
+                      if (recentPrompts.length > 0) setShowPromptHistory(true);
+                    }}
+                    onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    placeholder="描述你想生成的图像..."
+                    rows={6}
+                    style={{ width: "100%", resize: "none", borderRadius: 10, padding: "12px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "rgba(0,0,0,0.12)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
+                  />
 
-                {/* Prompt history dropdown */}
-                {showPromptHistory && recentPrompts.length > 0 && (
-                  <div style={{ marginTop: 6, borderRadius: 8, border: "1px solid var(--border-soft)", background: "var(--surface)", boxShadow: "var(--mosaic-menu-shadow)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
-                    <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
-                      <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
-                        <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
-                      </span>
-                      <button
-                        onMouseDown={e => { e.preventDefault(); savePrompts([]); setRecentPrompts([]); setShowPromptHistory(false); }}
-                        style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                      >
-                        清空
-                      </button>
-                    </div>
-                    {recentPrompts.slice(0, 3).map((p, i) => (
-                      <button
-                        key={i}
-                        onMouseDown={e => { e.preventDefault(); setPrompt(p); setShowPromptHistory(false); promptRef.current?.focus(); }}
-                        style={{ width: "100%", padding: "8px 12px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", transition: "background 0.1s" }}
-                        onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
-                        onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                    {recentPrompts.length > 3 && (
-                      <div style={{ padding: "5px 12px 7px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
-                        还有 {recentPrompts.length - 3} 条最近提示词
+                  {/* Prompt history dropdown */}
+                  {showPromptHistory && recentPrompts.length > 0 && (
+                    <div style={{ marginTop: 8, borderRadius: 10, border: "1px solid var(--border-soft)", background: "var(--surface)", boxShadow: "var(--mosaic-menu-shadow)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
+                      <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                          <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
+                        </span>
+                        <button
+                          onMouseDown={e => { e.preventDefault(); savePrompts([]); setRecentPrompts([]); setShowPromptHistory(false); }}
+                          style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          清空
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, position: "relative", zIndex: 25 }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPromptHistory(false);
-                    enhancePrompt();
-                  }}
-                  disabled={enhancing}
-                  className="action-btn"
-                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8, opacity: enhancing ? 0.6 : 1, cursor: enhancing ? "not-allowed" : "pointer" }}
-                >
-                  {enhancing ? (
-                    <><i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} /> 增强中</>
-                  ) : (
-                    <><i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强</>
+                      {recentPrompts.slice(0, 3).map((p, i) => (
+                        <button
+                          key={i}
+                          onMouseDown={e => { e.preventDefault(); setPrompt(p); setShowPromptHistory(false); promptRef.current?.focus(); }}
+                          style={{ width: "100%", padding: "8px 12px", textAlign: "left", fontSize: 12, color: "var(--text-secondary)", background: "transparent", border: "none", cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block", transition: "background 0.1s" }}
+                          onMouseEnter={e => (e.currentTarget.style.background = "var(--surface-2)")}
+                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                      {recentPrompts.length > 3 && (
+                        <div style={{ padding: "5px 12px 7px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>
+                          还有 {recentPrompts.length - 3} 条最近提示词
+                        </div>
+                      )}
+                    </div>
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowPromptHistory(false);
-                    referenceInputRef.current?.click();
-                  }}
-                  className="action-btn"
-                  style={{ ...actionBtnStyle, justifyContent: "center", padding: "7px 10px", fontSize: 12, borderRadius: 8 }}
-                >
-                  <i className="ri-image-add-line" style={{ fontSize: 14, lineHeight: 1 }} /> 参考图
-                </button>
-                <input
-                  ref={referenceInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={e => handleReferenceUpload(e.target.files?.[0])}
-                  style={{ display: "none" }}
-                />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, position: "relative", zIndex: 25 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptHistory(false);
+                      enhancePrompt();
+                    }}
+                    disabled={enhancing}
+                    className="action-btn"
+                    style={{ ...actionBtnStyle, justifyContent: "center", padding: "8px 10px", fontSize: 12, borderRadius: 10, opacity: enhancing ? 0.6 : 1, cursor: enhancing ? "not-allowed" : "pointer" }}
+                  >
+                    {enhancing ? (
+                      <><i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} /> 增强中</>
+                    ) : (
+                      <><i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强</>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPromptHistory(false);
+                      referenceInputRef.current?.click();
+                    }}
+                    className="action-btn"
+                    style={{ ...actionBtnStyle, justifyContent: "center", padding: "8px 10px", fontSize: 12, borderRadius: 10 }}
+                  >
+                    <i className="ri-image-add-line" style={{ fontSize: 14, lineHeight: 1 }} /> 参考图
+                  </button>
+                  <input
+                    ref={referenceInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={e => handleReferenceUpload(e.target.files?.[0])}
+                    style={{ display: "none" }}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Reference image */}
             {referenceImage && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div className="sidebar-section" style={sidebarSectionStyle}>
                 <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
                 <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1216,50 +1235,52 @@ export default function HomePage() {
             )}
 
             {/* Aspect Ratio */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div className="sidebar-section" style={sidebarSectionStyle}>
               <SideLabel icon="ri-aspect-ratio-line">画面比例</SideLabel>
-              {aiEngine === "gemini" ? (
-                <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
-              ) : (
-                <>
-                  {aspect === "auto" && smartInference && (() => {
-                    const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
-                    return !isDefault ? (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
-                        → {smartInference.label}
-                      </span>
-                    ) : null;
-                  })()}
-                  <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
-                    {ASPECT_OPTIONS.map(opt => {
-                      const active = aspect === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={() => { setAspect(opt.value); clearImages(); }}
-                          className="ck-option-card"
-                          data-active={active}
-                          style={{
-                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                            gap: 5, padding: "8px 4px", minHeight: 60, borderRadius: 6, border: "none",
-                            color: active ? "var(--btn-text)" : "var(--text-muted)",
-                            cursor: "pointer", transition: "background 0.15s, box-shadow 0.15s, color 0.15s", fontSize: 11,
-                          }}
-                        >
-                          <i className={opt.icon} style={{ fontSize: 16, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
-                          {opt.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
+              <div style={sidebarSectionBodyStyle}>
+                {aiEngine === "gemini" ? (
+                  <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
+                ) : (
+                  <>
+                    {aspect === "auto" && smartInference && (() => {
+                      const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                      return !isDefault ? (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
+                          → {smartInference.label}
+                        </span>
+                      ) : null;
+                    })()}
+                    <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                      {ASPECT_OPTIONS.map(opt => {
+                        const active = aspect === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => { setAspect(opt.value); clearImages(); }}
+                            className="ck-option-card"
+                            data-active={active}
+                            style={{
+                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                              gap: 5, padding: "10px 4px", minHeight: 64, borderRadius: 10, border: "none",
+                              color: active ? "var(--btn-text)" : "var(--text-muted)",
+                              cursor: "pointer", transition: "background 0.15s, box-shadow 0.15s, color 0.15s", fontSize: 11,
+                            }}
+                          >
+                            <i className={opt.icon} style={{ fontSize: 16, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Quality */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div className="sidebar-section" style={sidebarSectionStyle}>
               <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
-              <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
+              <div className="ck-segmented" style={{ display: "flex", borderRadius: 10, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
                 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
                   (() => {
                     const active = aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value;
@@ -1275,9 +1296,9 @@ export default function HomePage() {
             </div>
 
             {/* Count */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <div className="sidebar-section" style={sidebarSectionStyle}>
               <SideLabel icon="ri-apps-line">生成数量</SideLabel>
-              <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
+              <div className="ck-segmented" style={{ display: "flex", borderRadius: 10, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
                 {COUNT_OPTIONS.map((opt, i) => (
                   <button key={opt.n} data-active={count === opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                     <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: count === opt.n ? "#fff" : "currentColor" }} />
@@ -1289,7 +1310,7 @@ export default function HomePage() {
 
             {/* History */}
             {history.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div className="sidebar-section" style={sidebarSectionStyle}>
                 <button
                   onClick={() => setShowHistory(h => !h)}
                   style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
@@ -1301,7 +1322,7 @@ export default function HomePage() {
                 </button>
 
                 {showHistory && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {history.slice(0, 10).map(entry => (
                       <div
                         key={entry.id}
