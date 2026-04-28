@@ -203,6 +203,12 @@ export const signInAppearance = {
 export const userButtonAppearance = {
   variables,
   elements: {
+    rootBox: {
+      background: 'transparent',
+      boxShadow: 'none',
+      borderRadius: '0',
+      overflow: 'visible',
+    },
     userButtonAvatarBox: { width: 28, height: 28, borderRadius: '999px', overflow: 'hidden', background: 'transparent' },
     avatarBox: { borderRadius: '999px', overflow: 'hidden', background: 'transparent' },
     userButtonPopoverCard: {
