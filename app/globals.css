@@ -812,9 +812,9 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   color: var(--text-secondary) !important;
 }
 .cl-badge {
-  background: var(--surface-3) !important;
-  color: var(--text-secondary) !important;
-  box-shadow: 0 0 0 1px var(--border-soft) !important;
+  background: rgba(253,114,36,0.14) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 0 0 1px rgba(253,114,36,0.32) !important;
   font-size: 10px !important;
 }
 .cl-modalContent .cl-navbar [class*="footer" i],
@@ -837,11 +837,13 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-footerActionText span,
 .cl-footerActionText * {
   color: var(--text-muted) !important;
-  letter-spacing: -0.01em !important;
-  word-spacing: -0.05em !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  font-kerning: normal !important;
+  font-variant-ligatures: normal !important;
 }
 .cl-footerActionLink {
-  color: var(--text-secondary) !important;
+  color: var(--accent) !important;
 }
 .cl-footer [data-localization-key="footerPageLink__privacy"],
 .cl-footer [data-localization-key="footerPageLink__terms"],
@@ -854,9 +856,19 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-navbar .cl-poweredBy {
   display: flex !important;
   justify-content: center !important;
-  color: rgba(255,255,255,0.45) !important;
+  color: rgba(244,244,245,0.72) !important;
   filter: none !important;
   opacity: 1 !important;
+}
+.cl-poweredBy :where(svg, img),
+.cl-footer__poweredBy :where(svg, img),
+.cl-navbar .cl-poweredBy :where(svg, img) {
+  opacity: 0.88 !important;
+}
+.cl-poweredBy :where(path),
+.cl-footer__poweredBy :where(path),
+.cl-navbar .cl-poweredBy :where(path) {
+  fill: currentColor !important;
 }
 .cl-devBadge,
 [class*="devBadge"] {
@@ -879,11 +891,47 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 }
 /* OTP / 验证码输入框文字颜色 */
 .cl-otpCodeFieldInput,
-.cl-otpCodeField input {
+.cl-otpCodeField input,
+.cl-otpCodeFieldInput__input,
+[data-localization-key*="otp"] input {
   color: var(--text-primary) !important;
   -webkit-text-fill-color: var(--text-primary) !important;
   caret-color: var(--accent) !important;
   background: var(--mosaic-control-bg) !important;
+}
+.cl-otpCodeFieldInput::placeholder,
+.cl-otpCodeField input::placeholder,
+.cl-otpCodeFieldInput__input::placeholder {
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+}
+
+.cl-signIn-root .cl-formButtonPrimary,
+.cl-signUp-root .cl-formButtonPrimary,
+.cl-signIn-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"],
+.cl-signUp-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
+  background: var(--accent) !important;
+  background-color: var(--accent) !important;
+  background-image: none !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.cl-signIn-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"]::after,
+.cl-signUp-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"]::after {
+  background: linear-gradient(rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.1) 38%, transparent 100%) !important;
+  opacity: 1 !important;
+}
+
+.cl-signIn-root .cl-formButtonPrimary:hover,
+.cl-signUp-root .cl-formButtonPrimary:hover,
+.cl-signIn-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"]:hover,
+.cl-signUp-root .cl-formButtonPrimary[data-variant="solid"][data-color="primary"]:hover {
+  background: var(--accent-strong) !important;
+  background-color: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
 }
 
 .cl-formFieldInput:-webkit-autofill,

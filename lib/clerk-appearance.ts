@@ -143,7 +143,9 @@ export const signInAppearance = {
     formButtonPrimary: {
       background: clerkMosaic.color.accent,
       backgroundColor: clerkMosaic.color.accent,
+      backgroundImage: "none",
       color: "#ffffff",
+      WebkitTextFillColor: "#ffffff",
       borderRadius: clerkMosaic.radius.control,
       fontWeight: 600,
       fontSize: "14px",
@@ -162,21 +164,22 @@ export const signInAppearance = {
       fontSize: "13px",
     },
     badge: {
-      background: clerkMosaic.color.surface3,
-      color: clerkMosaic.color.text,
-      boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
+      background: "rgba(253,114,36,0.14)",
+      color: clerkMosaic.color.accent,
+      boxShadow: "0px 0px 0px 1px rgba(253,114,36,0.32)",
       fontSize: "10px",
     },
     footerActionText: {
       color: clerkMosaic.color.textMuted,
-      letterSpacing: "-0.01em",
-      wordSpacing: "-0.05em",
+      letterSpacing: "normal",
+      wordSpacing: "normal",
     },
     footerActionLink: {
-      color: clerkMosaic.color.textSecondary,
+      color: clerkMosaic.color.accent,
     },
     otpCodeFieldInput: {
       color: clerkMosaic.color.text,
+      WebkitTextFillColor: clerkMosaic.color.text,
       caretColor: clerkMosaic.color.accent,
       background: "#33333e",
     },
