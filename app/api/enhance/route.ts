@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
+export const preferredRegion = "iad1";
 
 const ENHANCE_TIMEOUT_MS = 30_000;
 type ProviderName = "tuzi" | "bltcy" | "custom";

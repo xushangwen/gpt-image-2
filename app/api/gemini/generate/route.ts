@@ -3,6 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 
 export const maxDuration = 300;
+export const preferredRegion = "iad1";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const UPSTREAM_TIMEOUT_MS = 180_000;

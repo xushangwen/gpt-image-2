@@ -1070,9 +1070,6 @@ export default function HomePage() {
             </div>
           )}
           <CreditBadge />
-          <span className="header-qs-label" style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.1em", textTransform: "uppercase", fontFamily: "var(--font-space)" }}>
-            QY.Studio
-          </span>
           <button
             className="theme-btn ck-icon-btn"
             onClick={() => setDark(d => !d)}
@@ -1398,6 +1395,9 @@ export default function HomePage() {
                 </>
               )}
             </button>
+            <p style={{ marginTop: 10, textAlign: "center", fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.08em", fontFamily: "var(--font-space)" }}>
+              © QY.Studio · Design by QiaoYa
+            </p>
           </div>
         </aside>
 

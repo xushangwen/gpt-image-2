@@ -777,12 +777,17 @@ html, body {
 .cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText {
   color: var(--text-primary) !important;
 }
-.cl-modalContent .cl-navbarButton[data-active="true"] {
+.cl-modalContent .cl-navbarButton[data-active="true"],
+.cl-modalContent .cl-navbarButton[aria-current] {
   background: var(--accent-dim) !important;
-  color: var(--accent) !important;
 }
 .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText,
 .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonIcon,
+.cl-modalContent .cl-navbarButton[aria-current] .cl-navbarButtonText,
+.cl-modalContent .cl-navbarButton[aria-current] .cl-navbarButtonIcon {
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
 .cl-modalContent .cl-formButtonReset:hover,
 .cl-modalContent .cl-profileSectionContent a:hover,
 .cl-footerActionLink:hover {
