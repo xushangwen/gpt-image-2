@@ -3,18 +3,44 @@
 /* ── 暗色主题（默认）── Clerk Mosaic design tokens + orange accent */
 :root {
   --bg: #111113;
-  --surface: #1b1b1f;
-  --surface-2: #232328;
+  --surface: #19191d;
+  --surface-2: #1f1f25;
   --surface-3: #2b2b34;
-  --border: rgba(255, 255, 255, 0.09);
+  --border: rgba(255, 255, 255, 0.075);
+  --border-soft: rgba(255, 255, 255, 0.055);
   --border-focus: rgba(253, 114, 36, 0.55);
   --text-primary: #f4f4f5;
   --text-secondary: #8b8b97;
   --text-muted: #62626d;
   --accent: #fd7224;
+  --accent-strong: #ff8c47;
   --accent-dim: rgba(253, 114, 36, 0.12);
   --accent-glow: rgba(253, 114, 36, 0.28);
-  --btn-text: #111113;
+  --btn-text: #ffffff;
+  --mosaic-radius-sm: 6px;
+  --mosaic-radius-md: 8px;
+  --mosaic-radius-lg: 12px;
+  --ck-radius-control: 6px;
+  --ck-radius-row: 8px;
+  --ck-radius-card: 12px;
+  --ck-radius-round: 999px;
+  --mosaic-control-bg: #33333e;
+  --mosaic-control-hover: #3d3d4a;
+  --mosaic-control-active: rgba(253, 114, 36, 0.11);
+  --mosaic-card-shadow: rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.2) 0px 15px 35px -5px, rgba(255,255,255,0.07) 0px 0px 0px 1px;
+  --mosaic-button-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 1px 1px rgba(0,0,0,0.14), 0 0 0 1px rgba(255,255,255,0.07);
+  --mosaic-button-hover-shadow: inset 0 1px 0 rgba(255,255,255,0.055), 0 1px 2px rgba(0,0,0,0.18), 0 0 0 1px rgba(255,255,255,0.10);
+  --mosaic-primary-shadow: inset 0 1px 0.5px rgba(255,255,255,0.16), 0 2px 2px -1px rgba(0,0,0,0.16), 0 4px 4px -2px rgba(0,0,0,0.24), 0 0 0 1px rgba(253,114,36,0.9);
+  --mosaic-sidebar-control-shadow: inset 0 1px 0 rgba(255,255,255,0.028), 0 0 0 1px rgba(255,255,255,0.065);
+  --mosaic-sidebar-control-hover-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(255,255,255,0.095);
+  --mosaic-menu-shadow: 0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07);
+  --ck-button-bg: var(--color-gray-1100, #33333e);
+  --ck-button-hover: var(--color-gray-1000, #3d3d4a);
+  --ck-field-bg: #33333e;
+  --ck-field-ring: rgba(255,255,255,0.08);
+  --ck-table-row: #18181c;
+  --ck-table-row-hover: #1f1f25;
+  --ck-focus: rgba(253,114,36,0.36);
   --preview-card-bg: #1b1b1f;
   --preview-card-bg-top: #232328;
   --preview-card-border: rgba(255, 255, 255, 0.07);
@@ -26,6 +52,7 @@
   --preview-grid-opacity: 0.55;
   --glass-bg: rgba(27, 27, 31, 0.82);
   --glass-border: rgba(255, 255, 255, 0.10);
+  --ck-social-btn-bg: linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%);
 }
 
 /* ── 亮色主题 ── */
@@ -35,14 +62,37 @@
   --surface-2: #f4f4f4;
   --surface-3: #ececec;
   --border: rgba(0, 0, 0, 0.06);
+  --border-soft: rgba(0, 0, 0, 0.05);
   --border-focus: rgba(0, 0, 0, 0.16);
   --text-primary: #111111;
   --text-secondary: #555555;
   --text-muted: #a6a6a6;
-  --accent: #111111;
-  --accent-dim: rgba(0, 0, 0, 0.042);
-  --accent-glow: rgba(0, 0, 0, 0.035);
+  --accent: #fd7224;
+  --accent-strong: #ff8c47;
+  --accent-dim: rgba(253, 114, 36, 0.09);
+  --accent-glow: rgba(253, 114, 36, 0.16);
   --btn-text: #ffffff;
+  --ck-radius-control: 6px;
+  --ck-radius-row: 8px;
+  --ck-radius-card: 12px;
+  --ck-radius-round: 999px;
+  --mosaic-control-bg: rgba(0, 0, 0, 0.035);
+  --mosaic-control-hover: rgba(0, 0, 0, 0.07);
+  --mosaic-control-active: rgba(253, 114, 36, 0.11);
+  --mosaic-card-shadow: rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.10) 0px 15px 35px -12px, rgba(0,0,0,0.08) 0px 0px 0px 1px;
+  --mosaic-button-shadow: inset 0 1px 0 rgba(255,255,255,0.78), 0 1px 2px rgba(0,0,0,0.045), 0 0 0 1px rgba(0,0,0,0.08);
+  --mosaic-button-hover-shadow: inset 0 1px 0 rgba(255,255,255,0.92), 0 2px 4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.15);
+  --mosaic-primary-shadow: inset 0 1px 1px rgba(255,255,255,0.28), 0 2px 2px -1px rgba(253,114,36,0.12), 0 4px 4px -2px rgba(253,114,36,0.1), 0 0 0 1px rgba(253,114,36,0.86);
+  --mosaic-sidebar-control-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 0 0 1px rgba(0,0,0,0.075);
+  --mosaic-sidebar-control-hover-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 0 0 1px rgba(0,0,0,0.14);
+  --mosaic-menu-shadow: 0px 5px 15px rgba(0,0,0,0.08), 0px 15px 35px -12px rgba(0,0,0,0.16), 0px 0px 0px 1px rgba(0,0,0,0.07);
+  --ck-button-bg: #ffffff;
+  --ck-button-hover: #e8e8ec;
+  --ck-field-bg: #ffffff;
+  --ck-field-ring: rgba(0,0,0,0.10);
+  --ck-table-row: #ffffff;
+  --ck-table-row-hover: #f5f5f7;
+  --ck-focus: rgba(253,114,36,0.24);
   --preview-card-bg: #f4f4f4;
   --preview-card-bg-top: #f4f4f4;
   --preview-card-border: rgba(0, 0, 0, 0.042);
@@ -54,6 +104,7 @@
   --preview-grid-opacity: 0.5;
   --glass-bg: rgba(252, 252, 252, 0.58);
   --glass-border: rgba(0, 0, 0, 0.09);
+  --ck-social-btn-bg: linear-gradient(180deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.01) 100%);
 }
 
 * { box-sizing: border-box; }
@@ -99,7 +150,7 @@ html, body {
 .generating-card {
   position: relative;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: var(--ck-radius-card);
   border: 1px solid var(--preview-card-border);
   background: var(--surface-2);
   animation: fadeUp 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
@@ -145,6 +196,393 @@ html, body {
   pointer-events: auto;
 }
 
+/* ── Clerk-derived product primitives ── */
+.ck-app-header {
+  background: var(--bg) !important;
+  box-shadow: inset 0 -1px 0 var(--border), inset 0 1px 0 rgba(255,255,255,0.035) !important;
+}
+
+.ck-logo-tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--ck-radius-control) !important;
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.ck-logo-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.1) 38%, rgba(255,255,255,0) 100%);
+}
+
+.ck-pill {
+  border-radius: var(--ck-radius-round) !important;
+  border: 1px solid rgba(253,114,36,0.42) !important;
+  background: rgba(253,114,36,0.055) !important;
+  color: var(--accent) !important;
+  font-size: 12px !important;
+  font-weight: 450 !important;
+}
+
+.ck-btn,
+.action-btn,
+.theme-btn {
+  position: relative;
+  min-height: 32px;
+  overflow: hidden;
+  border: none !important;
+  border-radius: var(--ck-radius-control) !important;
+  background: var(--ck-button-bg) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--mosaic-button-shadow) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1rem !important;
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s, opacity 0.15s !important;
+}
+
+.ck-btn::before,
+.action-btn::before,
+.theme-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0,0,0,0) 30%, rgba(0,0,0,0.12) 100%);
+  opacity: 1;
+  transition: opacity 0.15s;
+}
+
+.ck-btn:hover,
+.action-btn:hover,
+.theme-btn:hover {
+  background: var(--ck-button-hover) !important;
+  box-shadow: var(--mosaic-button-hover-shadow) !important;
+  color: var(--text-primary) !important;
+}
+
+.ck-btn[data-low="true"] {
+  background: rgba(253,114,36,0.10) !important;
+  color: var(--accent) !important;
+  box-shadow: inset 0 1px 0.5px rgba(255,255,255,0.06), 0 0 0 1px rgba(253,114,36,0.56) !important;
+}
+
+.ck-btn:hover::before,
+.action-btn:hover::before,
+.theme-btn:hover::before {
+  opacity: 0;
+}
+
+.ck-primary-btn,
+.mosaic-primary-btn {
+  position: relative;
+  overflow: hidden;
+  min-height: 32px;
+  border: none !important;
+  border-radius: var(--ck-radius-control) !important;
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+
+.ck-primary-btn:not(:disabled),
+.mosaic-primary-btn:not(:disabled) {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+.ck-primary-btn:not(:disabled) > :where(span, i),
+.mosaic-primary-btn:not(:disabled) > :where(span, i) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.ck-primary-btn::before,
+.mosaic-primary-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.1) 38%, rgba(255,255,255,0) 100%);
+  opacity: 1;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.ck-primary-btn:hover,
+.mosaic-primary-btn:hover {
+  background: var(--accent-strong) !important;
+}
+
+.ck-primary-btn:hover::before,
+.mosaic-primary-btn:hover::before {
+  background: linear-gradient(to bottom, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.12) 34%, rgba(255,255,255,0) 100%);
+}
+
+.ck-primary-btn:disabled,
+.mosaic-primary-btn:disabled,
+.ck-btn:disabled,
+.action-btn:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.42 !important;
+}
+
+.ck-icon-btn {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+}
+
+.ck-segmented {
+  display: inline-flex;
+  min-height: 30px;
+  overflow: hidden;
+  border-radius: var(--ck-radius-control) !important;
+  background: rgba(255,255,255,0.018) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06) !important;
+}
+
+.ck-segmented > button {
+  position: relative;
+  min-width: 0;
+  border: 0 !important;
+  border-left: 1px solid var(--border-soft) !important;
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+  font-weight: 450 !important;
+  box-shadow: none !important;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.ck-segmented > button::before,
+.ck-option-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ck-segmented > button:first-child {
+  border-left: 0 !important;
+}
+
+.ck-segmented > button:hover {
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--text-primary) !important;
+}
+
+.ck-segmented > button[data-active="true"] {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+  font-weight: 500 !important;
+}
+
+.ck-segmented > button[data-active="true"]::before {
+  opacity: 1;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.08) 38%, rgba(255,255,255,0) 100%);
+}
+
+.ck-segmented > button[data-active="true"]:hover {
+  background: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+}
+
+.ck-segmented > button[data-active="true"]:hover::before {
+  opacity: 1;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.1) 34%, rgba(255,255,255,0) 100%);
+}
+
+.ck-segmented > button[data-active="true"] i {
+  color: var(--btn-text) !important;
+}
+
+.ck-segmented--header {
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px !important;
+  background: rgba(255,255,255,0.018) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.055) !important;
+}
+
+.ck-segmented--header > button {
+  border-left: 0 !important;
+  border-radius: var(--ck-radius-control) !important;
+  color: var(--text-muted) !important;
+}
+
+.ck-segmented--header > button i,
+.theme-btn i {
+  color: currentColor !important;
+}
+
+.ck-segmented--header > button:hover {
+  background: rgba(255,255,255,0.032) !important;
+  color: var(--text-primary) !important;
+}
+
+.ck-segmented--header > button[data-active="true"] {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.ck-segmented--header > button[data-active="true"]:hover {
+  background: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+.ck-segmented--header > button[data-active="true"] :where(i, span) {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+:root[data-theme="light"] .ck-segmented {
+  background: rgba(0,0,0,0.025) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 0 0 1px rgba(0,0,0,0.07) !important;
+}
+
+:root[data-theme="light"] .ck-segmented > button:hover {
+  background: rgba(0,0,0,0.045) !important;
+}
+
+:root[data-theme="light"] .ck-segmented--header {
+  background: rgba(0,0,0,0.022) !important;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08) !important;
+}
+
+:root[data-theme="light"] .ck-segmented--header > button {
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme="light"] .ck-segmented--header > button:hover {
+  background: rgba(0,0,0,0.035) !important;
+}
+
+.ck-field,
+.ck-textarea {
+  border: 0 !important;
+  border-radius: var(--ck-radius-control) !important;
+  background: var(--ck-field-bg) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 0 0 1px var(--ck-field-ring) !important;
+}
+
+.ck-field:focus,
+.ck-textarea:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 3px var(--ck-focus), 0 0 0 1px var(--accent) !important;
+}
+
+.ck-field::placeholder,
+.ck-textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.ck-option-grid {
+  display: grid;
+  gap: 5px;
+}
+
+.ck-option-card {
+  border: 0 !important;
+  border-radius: var(--ck-radius-control) !important;
+  background: rgba(255,255,255,0.018) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.065) !important;
+  font-weight: 450 !important;
+  position: relative;
+}
+
+.ck-option-card:hover {
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--text-primary) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1) !important;
+}
+
+.ck-option-card[data-active="true"] {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.ck-option-card[data-active="true"]::before {
+  opacity: 1;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.08) 38%, rgba(255,255,255,0) 100%);
+}
+
+.ck-option-card[data-active="true"]:hover {
+  background: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.ck-option-card[data-active="true"]:hover::before {
+  opacity: 1;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.1) 34%, rgba(255,255,255,0) 100%);
+}
+
+.ck-option-card[data-active="true"] i {
+  color: var(--btn-text) !important;
+}
+
+:root[data-theme="light"] .ck-option-card {
+  background: rgba(0,0,0,0.025) !important;
+  box-shadow: inset 0 1px 0.5px rgba(255,255,255,0.85), 0 0 0 1px rgba(0,0,0,0.065) !important;
+}
+
+:root[data-theme="light"] .ck-option-card:hover {
+  background: rgba(0,0,0,0.045) !important;
+  box-shadow: inset 0 1px 0.5px rgba(255,255,255,0.95), 0 0 0 1px rgba(0,0,0,0.10) !important;
+}
+
+:root[data-theme="light"] .layout-sidebar .ck-segmented {
+  background: rgba(0,0,0,0.022) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 0 0 1px rgba(0,0,0,0.075) !important;
+}
+
+:root[data-theme="light"] .layout-sidebar .ck-segmented > button {
+  color: #767676 !important;
+}
+
+:root[data-theme="light"] .layout-sidebar .ck-segmented > button:hover {
+  background: rgba(0,0,0,0.04) !important;
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme="light"] .layout-sidebar .ck-option-card {
+  background: rgba(0,0,0,0.018) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82), 0 0 0 1px rgba(0,0,0,0.075) !important;
+  color: #767676 !important;
+}
+
+:root[data-theme="light"] .layout-sidebar .ck-option-card:hover {
+  background: rgba(0,0,0,0.03) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 1px rgba(0,0,0,0.11) !important;
+}
+
+.ck-data-row {
+  border: 0 !important;
+  border-radius: var(--ck-radius-row) !important;
+  background: var(--ck-table-row) !important;
+  box-shadow: 0 0 0 1px var(--border-soft) !important;
+}
+
+.ck-data-row:hover {
+  background: var(--ck-table-row-hover) !important;
+  box-shadow: 0 0 0 1px rgba(253,114,36,0.34) !important;
+}
+
 /* ── History item hover ── */
 .history-item .delete-btn { opacity: 0; transition: opacity 0.15s; }
 .history-item:hover .delete-btn,
@@ -154,32 +592,91 @@ html, body {
 
 /* ── Action buttons ── */
 .action-btn {
-  background: linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.01) 100%);
-  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.09), rgba(255,255,255,0.05) 0px 1px 0px inset, rgba(0,0,0,0.12) 0px 2px 4px;
-  transition: box-shadow 0.15s, background 0.15s, color 0.15s;
+  background: var(--ck-button-bg) !important;
+  box-shadow: var(--mosaic-button-shadow) !important;
+  transition: box-shadow 0.15s, background 0.15s, color 0.15s, opacity 0.15s !important;
 }
 .action-btn:hover {
-  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%) !important;
-  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.14), rgba(255,255,255,0.07) 0px 1px 0px inset, rgba(0,0,0,0.15) 0px 2px 4px !important;
+  background: var(--ck-button-hover) !important;
+  box-shadow: var(--mosaic-button-hover-shadow) !important;
   color: var(--text-primary) !important;
+}
+.action-btn:focus-visible,
+.theme-btn:focus-visible,
+.mob-icon-btn:focus-visible,
+.mobile-settings-close:focus-visible,
+.mosaic-primary-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 0 1px var(--border-focus) !important;
 }
 
 /* ── Theme toggle ── */
 .theme-btn {
-  background: linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.01) 100%);
-  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.09), rgba(255,255,255,0.05) 0px 1px 0px inset;
+  background: var(--ck-button-bg) !important;
+  box-shadow: var(--mosaic-button-shadow) !important;
 }
 .theme-btn:hover {
-  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%) !important;
-  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.14), rgba(255,255,255,0.07) 0px 1px 0px inset !important;
+  background: var(--ck-button-hover) !important;
+  box-shadow: var(--mosaic-button-hover-shadow) !important;
   color: var(--text-primary) !important;
+}
+
+.layout-sidebar .action-btn,
+.layout-sidebar .ck-segmented,
+.layout-sidebar .ck-option-card {
+  box-shadow: var(--mosaic-sidebar-control-shadow) !important;
+}
+
+.layout-sidebar .action-btn:hover,
+.layout-sidebar .ck-option-card:hover {
+  box-shadow: var(--mosaic-sidebar-control-hover-shadow) !important;
+}
+
+.layout-sidebar .ck-segmented {
+  min-height: 30px;
+  background: rgba(255,255,255,0.018) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06) !important;
+}
+
+.layout-sidebar .ck-segmented > button {
+  color: var(--text-muted) !important;
+}
+
+.layout-sidebar .ck-segmented > button:hover {
+  background: rgba(255,255,255,0.03) !important;
+  color: var(--text-primary) !important;
+}
+
+.layout-sidebar .ck-option-card {
+  background: rgba(255,255,255,0.018) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.065) !important;
+  color: var(--text-muted) !important;
+}
+
+.layout-sidebar .ck-option-card:hover {
+  background: rgba(255,255,255,0.03) !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1) !important;
+  color: var(--text-primary) !important;
+}
+
+.layout-sidebar .ck-option-card[data-active="true"],
+.layout-sidebar .ck-segmented > button[data-active="true"] {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+.layout-sidebar .ck-option-card[data-active="true"]:hover,
+.layout-sidebar .ck-segmented > button[data-active="true"]:hover {
+  background: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
 }
 
 /* ── Mobile input icon buttons ── */
 .mob-icon-btn {
   width: 36px;
   height: 36px;
-  border-radius: 9px;
+  border-radius: var(--ck-radius-control);
   border: none;
   background: transparent;
   color: var(--text-muted);
@@ -192,7 +689,7 @@ html, body {
   position: relative;
 }
 .mob-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--mosaic-control-hover);
   color: var(--text-secondary);
 }
 .mob-icon-btn:disabled {
@@ -200,7 +697,255 @@ html, body {
   cursor: not-allowed;
 }
 :root[data-theme="light"] .mob-icon-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: var(--mosaic-control-hover);
+}
+
+/* ── Clerk Mosaic global states ── */
+.cl-formFieldInput::placeholder {
+  color: var(--text-muted) !important;
+}
+.cl-formFieldInput::-webkit-input-placeholder {
+  color: var(--text-muted) !important;
+}
+.cl-formFieldInput:focus {
+  box-shadow: 0 0 0 3px var(--accent-dim), 0 0 0 1px var(--border-focus) !important;
+  outline: none !important;
+}
+.cl-formButtonPrimary {
+  background: var(--accent) !important;
+  background-color: var(--accent) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+/* Clerk v6 uses ::after for the button background layer — override it */
+.cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
+  background-color: var(--accent) !important;
+}
+.cl-formButtonPrimary[data-variant="solid"][data-color="primary"]::after {
+  background: linear-gradient(rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.1) 38%, transparent 100%) !important;
+  opacity: 1 !important;
+}
+.cl-formButtonPrimary:hover,
+.cl-formButtonPrimary[data-variant="solid"][data-color="primary"]:hover {
+  background: var(--accent-strong) !important;
+  background-color: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+.cl-formButtonPrimary :where(span, svg, path) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+.cl-userButtonTrigger {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 2px !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  background: var(--ck-button-bg) !important;
+  box-shadow: var(--mosaic-button-shadow) !important;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s !important;
+}
+.cl-userButtonTrigger:hover {
+  background: var(--ck-button-hover) !important;
+  box-shadow: var(--mosaic-button-hover-shadow) !important;
+}
+:root[data-theme="light"] .cl-userButtonTrigger {
+  background: rgba(0,0,0,0.05) !important;
+}
+:root[data-theme="light"] .cl-userButtonTrigger:hover {
+  background: rgba(0,0,0,0.09) !important;
+}
+.cl-userButtonAvatarBox {
+  border-radius: 999px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+}
+
+.cl-socialButtonsBlockButton:hover,
+.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover,
+.cl-modalContent .cl-navbarButton:hover,
+.cl-modalContent .cl-profileSectionPrimaryButton:hover,
+.cl-modalContent .cl-modalCloseButton:hover,
+.cl-modalContent .cl-menuItem:hover {
+  background: var(--mosaic-control-hover) !important;
+  color: var(--text-primary) !important;
+}
+.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonText,
+.cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonIcon,
+.cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText {
+  color: var(--text-primary) !important;
+}
+.cl-modalContent .cl-navbarButton[data-active="true"] {
+  background: var(--accent-dim) !important;
+  color: var(--accent) !important;
+}
+.cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText,
+.cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonIcon,
+.cl-modalContent .cl-formButtonReset:hover,
+.cl-modalContent .cl-profileSectionContent a:hover,
+.cl-footerActionLink:hover {
+  color: var(--accent) !important;
+}
+.cl-modalContent .cl-userPreviewMainIdentifierText,
+.cl-modalContent .cl-profileSectionContent p,
+.cl-modalContent .cl-profileSectionContent span:not(.cl-badge) {
+  color: var(--text-primary) !important;
+}
+.cl-modalContent .cl-userPreviewSecondaryIdentifier,
+.cl-modalContent .cl-profileSectionTitleText,
+.cl-modalContent .cl-modalCloseButton,
+.cl-modalContent .cl-navbar p,
+.cl-modalContent .cl-formFieldLabel,
+.cl-modalContent [class*="subtitle" i],
+.cl-modalContent [class*="Subtitle"] {
+  color: var(--text-secondary) !important;
+}
+.cl-modalContent .cl-badge {
+  background: var(--surface-3) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: 0 0 0 1px var(--border-soft) !important;
+}
+.cl-modalContent .cl-navbar [class*="footer" i],
+.cl-modalContent .cl-navbar [class*="powered" i] {
+  color: var(--text-muted) !important;
+}
+.cl-footer,
+.cl-footer > *,
+.cl-footerAction,
+.cl-footerAction > *,
+.cl-card > div:last-child {
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+.cl-footer {
+  border-top: 1px solid var(--border-soft) !important;
+}
+.cl-footerActionText {
+  color: var(--text-muted) !important;
+}
+.cl-footerActionLink {
+  color: var(--text-secondary) !important;
+}
+.cl-footer [data-localization-key="footerPageLink__privacy"],
+.cl-footer [data-localization-key="footerPageLink__terms"],
+.cl-footer [data-localization-key="footerPageLink__help"] {
+  display: none !important;
+}
+.cl-poweredBy,
+.cl-footer__poweredBy,
+.cl-footerPages,
+.cl-navbar .cl-poweredBy {
+  display: flex !important;
+  opacity: 0.25 !important;
+  filter: grayscale(1) brightness(2) !important;
+  justify-content: center !important;
+}
+.cl-devBadge,
+[class*="devBadge"] {
+  display: none !important;
+}
+.cl-footer p:not(:has(a)),
+.cl-footerPages p:not(:has(a)) {
+  display: none !important;
+}
+.cl-signIn-start .cl-footer > div:last-child,
+.cl-signUp-start .cl-footer > div:last-child {
+  display: none !important;
+}
+.cl-signIn-start .cl-footer::before,
+.cl-signIn-start .cl-footer::after,
+.cl-signUp-start .cl-footer::before,
+.cl-signUp-start .cl-footer::after {
+  display: none !important;
+  background: none !important;
+}
+.cl-formFieldInput:-webkit-autofill,
+.cl-formFieldInput:-webkit-autofill:hover,
+.cl-formFieldInput:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 100px var(--mosaic-control-bg) inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
+}
+.cl-navbarButtonIcon svg {
+  display: none;
+}
+.cl-navbarButtonIcon {
+  font-family: 'remixicon';
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.cl-navbarButton:nth-child(1) .cl-navbarButtonIcon::before {
+  content: "\f264";
+}
+.cl-navbarButton:nth-child(2) .cl-navbarButtonIcon::before {
+  content: "\f108";
+}
+.cl-navbar h1,
+.cl-navbar h2,
+.cl-navbar h3 {
+  color: var(--text-primary);
+}
+.cl-navbar p,
+.cl-navbar [class*="subtitle" i],
+.cl-navbar [class*="Subtitle"] {
+  color: var(--text-secondary);
+}
+
+/* Primary/accent controls: orange surfaces always keep white content.
+   Keep this after all component hover rules so light-mode hover cannot drift. */
+.ck-primary-btn:not(:disabled),
+.mosaic-primary-btn:not(:disabled),
+.cl-formButtonPrimary,
+.ck-segmented > button[data-active="true"],
+.ck-segmented--header > button[data-active="true"],
+.ck-option-card[data-active="true"],
+.layout-sidebar .ck-segmented > button[data-active="true"],
+.layout-sidebar .ck-option-card[data-active="true"],
+.ck-primary-btn:not(:disabled):is(:hover, :focus-visible, :active),
+.mosaic-primary-btn:not(:disabled):is(:hover, :focus-visible, :active),
+.cl-formButtonPrimary:is(:hover, :focus-visible, :active),
+.ck-segmented > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.ck-segmented--header > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.ck-option-card[data-active="true"]:is(:hover, :focus-visible, :active),
+.layout-sidebar .ck-segmented > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.layout-sidebar .ck-option-card[data-active="true"]:is(:hover, :focus-visible, :active) {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+.ck-primary-btn:not(:disabled) :where(span, i, svg, path),
+.mosaic-primary-btn:not(:disabled) :where(span, i, svg, path),
+.cl-formButtonPrimary :where(span, i, svg, path),
+.ck-segmented > button[data-active="true"] :where(span, i, svg, path),
+.ck-segmented--header > button[data-active="true"] :where(span, i, svg, path),
+.ck-option-card[data-active="true"] :where(span, i, svg, path),
+.layout-sidebar .ck-segmented > button[data-active="true"] :where(span, i, svg, path),
+.layout-sidebar .ck-option-card[data-active="true"] :where(span, i, svg, path) {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.ck-primary-btn:not(:disabled):is(:hover, :focus-visible, :active),
+.mosaic-primary-btn:not(:disabled):is(:hover, :focus-visible, :active),
+.cl-formButtonPrimary:is(:hover, :focus-visible, :active),
+.ck-segmented > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.ck-segmented--header > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.ck-option-card[data-active="true"]:is(:hover, :focus-visible, :active),
+.layout-sidebar .ck-segmented > button[data-active="true"]:is(:hover, :focus-visible, :active),
+.layout-sidebar .ck-option-card[data-active="true"]:is(:hover, :focus-visible, :active) {
+  background: var(--accent-strong) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -273,7 +1018,7 @@ html, body {
     right: 12px;
     bottom: max(16px, env(safe-area-inset-bottom, 16px));
     padding: 12px;
-    border-radius: 20px;
+    border-radius: var(--ck-radius-card);
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     backdrop-filter: blur(24px) saturate(160%);
@@ -292,7 +1037,7 @@ html, body {
     right: 12px;
     bottom: calc(-62vh - 80px);
     height: 62vh;
-    border-radius: 20px;
+    border-radius: var(--ck-radius-card);
     background: var(--glass-bg);
     /* backdrop-filter via inline style in JSX — Tailwind v4 PostCSS strips it from globals.css */
     border: 1px solid rgba(255, 255, 255, 0.12);
@@ -355,7 +1100,7 @@ html, body {
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    border-radius: 8px;
+    border-radius: var(--ck-radius-control);
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.035);
     color: var(--text-secondary);
@@ -427,4 +1172,56 @@ html, body {
     flex-wrap: wrap;
     justify-content: center;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   亮色模式选中态保护 — 必须放在文件最末，覆盖前面所有高优先级亮色规则
+   根本原因：`:root[data-theme="light"] .layout-sidebar .ck-option-card`
+   (0,4,0) 优先级高于 `.layout-sidebar .ck-option-card[data-active="true"]`
+   (0,3,0)，导致亮色下选中态 color 被强制为 #767676。
+──────────────────────────────────────────────────────────────────────────── */
+:root[data-theme="light"] .ck-option-card[data-active="true"],
+:root[data-theme="light"] .layout-sidebar .ck-option-card[data-active="true"],
+:root[data-theme="light"] .ck-segmented > button[data-active="true"],
+:root[data-theme="light"] .layout-sidebar .ck-segmented > button[data-active="true"],
+:root[data-theme="light"] .ck-segmented--header > button[data-active="true"] {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+:root[data-theme="light"] .ck-option-card[data-active="true"]:hover,
+:root[data-theme="light"] .layout-sidebar .ck-option-card[data-active="true"]:hover,
+:root[data-theme="light"] .ck-segmented > button[data-active="true"]:hover,
+:root[data-theme="light"] .layout-sidebar .ck-segmented > button[data-active="true"]:hover,
+:root[data-theme="light"] .ck-segmented--header > button[data-active="true"]:hover {
+  background: var(--accent-strong) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+}
+
+:root[data-theme="light"] .ck-option-card[data-active="true"] :where(i, span, svg, path),
+:root[data-theme="light"] .layout-sidebar .ck-option-card[data-active="true"] :where(i, span, svg, path),
+:root[data-theme="light"] .ck-segmented > button[data-active="true"] :where(i, span, svg, path),
+:root[data-theme="light"] .layout-sidebar .ck-segmented > button[data-active="true"] :where(i, span, svg, path),
+:root[data-theme="light"] .ck-segmented--header > button[data-active="true"] :where(i, span, svg, path) {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+/* 亮色模式 primary 按钮白色文字保护 */
+:root[data-theme="light"] .ck-primary-btn:not(:disabled),
+:root[data-theme="light"] .mosaic-primary-btn:not(:disabled),
+:root[data-theme="light"] .cl-formButtonPrimary {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+}
+
+:root[data-theme="light"] .ck-primary-btn:not(:disabled) :where(span, i, svg, path),
+:root[data-theme="light"] .mosaic-primary-btn:not(:disabled) :where(span, i, svg, path),
+:root[data-theme="light"] .cl-formButtonPrimary :where(span, i, svg, path) {
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
 }

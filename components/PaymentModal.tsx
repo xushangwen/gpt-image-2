@@ -47,7 +47,9 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
         position: "fixed",
         inset: 0,
         zIndex: 1000,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(0,0,0,0.68)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -59,8 +61,9 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
         width: "100%",
         maxWidth: 420,
         background: "var(--surface)",
-        borderRadius: 16,
-        border: "1px solid var(--border)",
+        borderRadius: 12,
+        border: "none",
+        boxShadow: "var(--mosaic-card-shadow)",
         overflow: "hidden",
       }}>
         {/* Header */}
@@ -81,7 +84,8 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
           </div>
           <button
             onClick={onClose}
-            style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)", boxShadow: "0px 0px 0px 1px rgba(255,255,255,0.10), rgba(255,255,255,0.05) 0px 1px 0px inset", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            className="action-btn ck-icon-btn"
+            style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)", boxShadow: "var(--mosaic-button-shadow)", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
           </button>
@@ -99,14 +103,18 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                     <button
                       key={p.id}
                       onClick={() => setSelectedPkg(p.id)}
+                      className="ck-option-card"
+                      data-active={active}
                       style={{
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
                         padding: "14px 16px",
-                        borderRadius: 10,
-                        border: `1.5px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                        background: active ? "var(--accent-dim)" : "transparent",
+                        borderRadius: 8,
+                        border: "1px solid",
+                        borderColor: active ? "var(--accent)" : "var(--border)",
+                        background: active ? "var(--accent-dim)" : "var(--mosaic-control-bg)",
+                        boxShadow: active ? "var(--mosaic-primary-shadow)" : "var(--mosaic-button-shadow)",
                         cursor: "pointer",
                         transition: "all 0.15s",
                         textAlign: "left",
@@ -143,20 +151,21 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
               <button
                 onClick={handleCreateOrder}
                 disabled={loading}
+                className="mosaic-primary-btn ck-primary-btn"
                 style={{
                   marginTop: 16,
                   width: "100%",
                   padding: "12px 0",
-                  borderRadius: 8,
+                  borderRadius: 6,
                   border: "none",
-                  background: "linear-gradient(180deg, #ff8c47 0%, #fd7224 100%)",
-                  color: "#111113",
+                  background: "linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%)",
+                  color: "var(--btn-text)",
                   fontSize: 14,
                   fontWeight: 600,
                   cursor: loading ? "not-allowed" : "pointer",
                   opacity: loading ? 0.6 : 1,
                   transition: "opacity 0.15s",
-                  boxShadow: "rgba(253,114,36,0.55) 0px 0px 0px 1px, rgba(255,255,255,0.14) 0px 1px 0px inset, rgba(34,42,53,0.25) 0px 4px 10px, rgba(0,0,0,0.35) 0px 2px 3px",
+                  boxShadow: "var(--mosaic-primary-shadow)",
                 }}
               >
                 {loading ? "生成中..." : `生成订单 · ¥${pkg.price_yuan}`}
@@ -190,7 +199,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                 {/* Order number */}
                 <div style={{
                   padding: "12px 16px",
-                  borderRadius: 10,
+                  borderRadius: 8,
                   background: "var(--surface-2, var(--bg))",
                   border: "1px solid var(--border)",
                   marginBottom: 16,
@@ -211,7 +220,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
 
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 16 }}>
                   微信扫码支付 <strong>¥{pkg.price_yuan}</strong>（{pkg.credits} 张）<br />
-                  <span style={{ color: "var(--accent, #fb923c)", fontWeight: 600 }}>
+                  <span style={{ color: "var(--accent)", fontWeight: 600 }}>
                     转账时请在备注填写订单号
                   </span>
                   ，否则无法自动匹配
@@ -224,11 +233,12 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
 
               <button
                 onClick={onClose}
+                className="action-btn ck-btn"
                 style={{
                   marginTop: 20,
                   width: "100%",
                   padding: "12px 0",
-                  borderRadius: 10,
+                  borderRadius: 8,
                   border: "1px solid var(--border)",
                   background: "transparent",
                   color: "var(--text-primary)",

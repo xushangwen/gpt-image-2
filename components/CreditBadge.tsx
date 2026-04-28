@@ -26,6 +26,8 @@ export default function CreditBadge() {
   return (
     <>
       <button
+        className="ck-btn"
+        data-low={low}
         onClick={() => setShowModal(true)}
         title="查看积分余额 / 购买套餐"
         style={{
@@ -35,9 +37,10 @@ export default function CreditBadge() {
           padding: "4px 10px",
           height: 28,
           borderRadius: 8,
-          border: `1px solid ${low ? "rgba(251,146,60,0.4)" : "var(--border)"}`,
-          background: low ? "rgba(251,146,60,0.08)" : "transparent",
-          color: low ? "#fd7224" : "var(--text-secondary)",
+          border: `1px solid ${low ? "var(--border-focus)" : "var(--border)"}`,
+          background: low ? "var(--accent-dim)" : "var(--mosaic-control-bg)",
+          boxShadow: "var(--mosaic-button-shadow)",
+          color: low ? "var(--accent)" : "var(--text-secondary)",
           cursor: "pointer",
           fontSize: 11,
           fontFamily: "var(--font-space)",
@@ -48,7 +51,7 @@ export default function CreditBadge() {
       >
         <i
           className="ri-coins-line"
-          style={{ fontSize: 13, lineHeight: 1, color: low ? "#fd7224" : "var(--text-muted)" }}
+          style={{ fontSize: 13, lineHeight: 1, color: low ? "var(--accent)" : "var(--text-muted)" }}
         />
         {credits === null ? "—" : `${credits} 张`}
         {low && (

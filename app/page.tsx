@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { UserButton } from "@clerk/nextjs";
 import CreditBadge from "@/components/CreditBadge";
 import PaymentModal from "@/components/PaymentModal";
+import { userButtonAppearance, userProfileAppearance } from "@/lib/clerk-appearance";
 
 /* ── Types ── */
 type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
@@ -442,7 +443,7 @@ const actionBtnStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 7,
   padding: "8px 16px",
-  borderRadius: 9,
+  borderRadius: 6,
   border: "1px solid var(--border)",
   background: "transparent",
   color: "var(--text-secondary)",
@@ -454,7 +455,7 @@ const actionBtnStyle: React.CSSProperties = {
 const lightboxBtnStyle: React.CSSProperties = {
   width: 40,
   height: 40,
-  borderRadius: 10,
+  borderRadius: 8,
   border: "none",
   background: "rgba(255,255,255,0.1)",
   color: "#fff",
@@ -471,7 +472,7 @@ const lightboxNavStyle: React.CSSProperties = {
   transform: "translateY(-50%)",
   width: 48,
   height: 48,
-  borderRadius: 14,
+  borderRadius: 12,
   border: "none",
   background: "rgba(255,255,255,0.08)",
   color: "#fff",
@@ -962,77 +963,14 @@ export default function HomePage() {
     fontSize: 12,
     fontWeight: active ? 500 : 400,
     border: "none",
-    background: active ? "rgba(253,114,36,0.14)" : "transparent",
-    color: active ? "var(--accent)" : "var(--text-secondary)",
+    background: "transparent",
+    color: active ? "#fff" : "var(--text-secondary)",
     cursor: "pointer",
     transition: "background 0.15s, color 0.15s",
   });
 
   return (
     <>
-    <style>{`
-      /* Only hover/focus/pseudo states — static styles are in appearance.elements (inline) */
-
-      /* UserButton popover hover */
-      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover {
-        background: rgba(255,255,255,0.07);
-        color: #f4f4f5;
-      }
-      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonText,
-      .cl-userButtonPopoverCard .cl-userButtonPopoverActionButton:hover .cl-userButtonPopoverActionButtonIcon {
-        color: #f4f4f5;
-      }
-
-      /* UserProfile interactive states */
-      .cl-modalContent .cl-navbarButton:hover {
-        background: rgba(255,255,255,0.07);
-        color: #f4f4f5;
-      }
-      .cl-modalContent .cl-navbarButton[data-active="true"] {
-        background: rgba(253,114,36,0.12);
-        color: #fd7224;
-      }
-      .cl-modalContent .cl-navbarButton:hover .cl-navbarButtonText { color: #f4f4f5; }
-      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonText,
-      .cl-modalContent .cl-navbarButton[data-active="true"] .cl-navbarButtonIcon { color: #fd7224; }
-      .cl-modalContent .cl-profileSectionPrimaryButton:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
-      .cl-modalContent .cl-modalCloseButton:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
-      .cl-modalContent .cl-formFieldInput:focus {
-        box-shadow: 0 0 0 3px rgba(253,114,36,0.18), 0 0 0 1px rgba(253,114,36,0.7) !important;
-        outline: none;
-      }
-      .cl-modalContent .cl-formButtonReset:hover { color: #fd7224; }
-      .cl-modalContent .cl-menuButton:hover { color: #f4f4f5; }
-      .cl-modalContent .cl-menuItem:hover { background: rgba(255,255,255,0.07); color: #f4f4f5; }
-      .cl-modalContent .cl-profileSectionContent a:hover { color: #fd7224; }
-
-      /* Nav icons → Remix Icons (pseudo-elements can't be inline styles) */
-      .cl-navbarButtonIcon svg { display: none; }
-      .cl-navbarButtonIcon {
-        font-family: 'remixicon';
-        font-style: normal;
-        font-size: 15px;
-        line-height: 1;
-        width: 16px; height: 16px;
-        display: flex;
-        align-items: center; justify-content: center;
-        flex-shrink: 0;
-      }
-      .cl-navbarButton:nth-child(1) .cl-navbarButtonIcon::before { content: "\f264"; }
-      .cl-navbarButton:nth-child(2) .cl-navbarButtonIcon::before { content: "\f108"; }
-
-      /* "Secured by Clerk" */
-      .cl-navbar .cl-poweredBy { display: flex; opacity: 0.25; filter: grayscale(1) brightness(2); }
-
-      /* Navbar title/subtitle */
-      .cl-navbar h1, .cl-navbar h2, .cl-navbar h3 { color: #f4f4f5; }
-      .cl-navbar p, .cl-navbar [class*="subtitle" i], .cl-navbar [class*="Subtitle"] { color: #8b8b97; }
-
-      /* Dev badge + "Development mode" text hidden until production instance */
-      .cl-devBadge, [class*="devBadge"] { display: none !important; }
-      .cl-footer p:not(:has(a)),
-      .cl-footerPages p:not(:has(a)) { display: none !important; }
-    `}</style>
     {showPaymentModal && (
       <PaymentModal
         currentCredits={currentCredits}
@@ -1043,30 +981,30 @@ export default function HomePage() {
     <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* ── Header ── */}
-      <header style={{
+      <header className="ck-app-header" style={{
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         padding: "0 20px",
         height: 50,
-        background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%), var(--surface)",
-        boxShadow: "0 1px 0 var(--border), inset 0 1px 0 rgba(255,255,255,0.05)",
+        background: "var(--bg)",
+        boxShadow: "inset 0 -1px 0 var(--border)",
         flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(145deg, #ff8c47 0%, #fd7224 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "rgba(253,114,36,0.45) 0px 0px 0px 1px, rgba(255,255,255,0.12) 0px 1px 0px inset, rgba(253,114,36,0.2) 0px 3px 8px" }}>
-            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "#111113" }} />
+          <div className="ck-logo-tile" style={{ width: 28, height: 28, borderRadius: 6, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "var(--mosaic-primary-shadow)" }}>
+            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--btn-text)", position: "relative", zIndex: 1 }} />
           </div>
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
             ImageGen
           </span>
-          <span className="header-badge" style={{ fontSize: 11, padding: "2px 7px", borderRadius: 20, border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
+          <span className="header-badge ck-pill" style={{ fontSize: 11, padding: "2px 7px", borderRadius: "var(--ck-radius-round)", border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
             GPT-Image-2
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* AI 引擎切换 */}
-          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
+          <div className="ck-segmented ck-segmented--header" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
             {(["openai", "gemini"] as const).map((eng, i) => {
               const active = aiEngine === eng;
               return (
@@ -1074,15 +1012,16 @@ export default function HomePage() {
                   key={eng}
                   onClick={() => setAiEngine(eng)}
                   title={eng === "openai" ? "GPT-Image-2" : "Google Gemini"}
+                  data-active={active}
                   style={{
                     padding: "4px 10px",
                     height: 28,
                     fontSize: 11,
                     fontFamily: "var(--font-space)",
                     border: "none",
-                    borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.07)" : "none",
-                    background: active ? "rgba(253,114,36,0.14)" : "transparent",
-                    color: active ? "var(--accent)" : "var(--text-muted)",
+                    borderLeft: i > 0 ? "1px solid var(--border-soft)" : "none",
+                    background: "transparent",
+                    color: active ? "#fff" : "var(--text-muted)",
                     cursor: "pointer",
                     transition: "background 0.15s, color 0.15s",
                     fontWeight: active ? 500 : 400,
@@ -1092,15 +1031,15 @@ export default function HomePage() {
                     gap: 4,
                   }}
                 >
-                  <i className={eng === "openai" ? "ri-openai-line" : "ri-google-line"} style={{ fontSize: 12, lineHeight: 1 }} />
-                  {eng === "openai" ? "GPT" : "Gemini"}
+                  <i className={eng === "openai" ? "ri-openai-line" : "ri-google-line"} style={{ fontSize: 12, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
+                  <span style={{ color: active ? "#fff" : "currentColor" }}>{eng === "openai" ? "GPT" : "Gemini"}</span>
                 </button>
               );
             })}
           </div>
           {/* 线路切换（仅 OpenAI 模式可见） */}
           {aiEngine === "openai" && (
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
+            <div className="ck-segmented ck-segmented--header" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
               {(["tuzi", "bltcy"] as const).map((p) => {
                 const active = provider === p;
                 return (
@@ -1108,22 +1047,23 @@ export default function HomePage() {
                     key={p}
                     onClick={() => setProvider(p)}
                     title={PROVIDER_LABELS[p].desc}
+                    data-active={active}
                     style={{
                       padding: "4px 10px",
                       height: 28,
                       fontSize: 11,
                       fontFamily: "var(--font-space)",
                       border: "none",
-                      borderLeft: p === "bltcy" ? "1px solid rgba(255,255,255,0.07)" : "none",
-                      background: active ? "rgba(253,114,36,0.14)" : "transparent",
-                      color: active ? "var(--accent)" : "var(--text-muted)",
+                      borderLeft: p === "bltcy" ? "1px solid var(--border-soft)" : "none",
+                      background: "transparent",
+                      color: active ? "#fff" : "var(--text-muted)",
                       cursor: "pointer",
                       transition: "background 0.15s, color 0.15s",
                       fontWeight: active ? 500 : 400,
                       lineHeight: 1,
                     }}
                   >
-                    {PROVIDER_LABELS[p].name}
+                    <span style={{ color: active ? "#fff" : "currentColor" }}>{PROVIDER_LABELS[p].name}</span>
                   </button>
                 );
               })}
@@ -1134,7 +1074,7 @@ export default function HomePage() {
             QY.Studio
           </span>
           <button
-            className="theme-btn"
+            className="theme-btn ck-icon-btn"
             onClick={() => setDark(d => !d)}
             style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}
             title={dark ? "切换亮色" : "切换暗色"}
@@ -1142,148 +1082,8 @@ export default function HomePage() {
             <i className={dark ? "ri-sun-line" : "ri-moon-line"} style={{ fontSize: 16, lineHeight: 1 }} />
           </button>
           <UserButton
-            appearance={{
-              variables: {
-                colorBackground:      "#1b1b1f",
-                colorText:            "#f4f4f5",
-                colorTextSecondary:   "#8b8b97",
-                colorPrimary:         "#fd7224",
-                colorInputBackground: "rgba(255,255,255,0.05)",
-                colorNeutral:         "#8b8b97",
-                borderRadius:         "6px",
-                fontSize:             "13px",
-              },
-              elements: {
-                userButtonAvatarBox: { width: 28, height: 28 },
-                userButtonPopoverCard: {
-                  width:        "240px",
-                  minWidth:     "240px",
-                  maxWidth:     "240px",
-                  background:   "#1b1b1f",
-                  border:       "none",
-                  boxShadow:    "rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.2) 0px 15px 35px -5px, rgba(255,255,255,0.07) 0px 0px 0px 1px",
-                  borderRadius: "12px",
-                  padding:      "6px",
-                },
-                userButtonPopoverMain:    { padding: "0" },
-                userButtonPopoverActions: { padding: "4px 0" },
-                userButtonPopoverActionButton: {
-                  borderRadius: "6px",
-                  padding:      "9px 12px",
-                  color:        "#f4f4f5",
-                },
-                userButtonPopoverActionButtonText: {
-                  color:    "#f4f4f5",
-                  fontSize: "13px",
-                },
-                userButtonPopoverActionButtonIcon: { color: "#8b8b97" },
-                userButtonPopoverFooter: { display: "none" },
-                userPreview: { padding: "12px 14px 10px" },
-                userPreviewMainIdentifier: {
-                  color:      "#f4f4f5",
-                  fontSize:   "14px",
-                  fontWeight: 600,
-                },
-                userPreviewSecondaryIdentifier: {
-                  color:    "#8b8b97",
-                  fontSize: "12px",
-                },
-              },
-            }}
-            userProfileProps={{
-              appearance: {
-                variables: {
-                  colorBackground:      "#1b1b1f",
-                  colorText:            "#f4f4f5",
-                  colorTextSecondary:   "#8b8b97",
-                  colorPrimary:         "#fd7224",
-                  colorInputBackground: "rgba(255,255,255,0.05)",
-                  colorNeutral:         "#8b8b97",
-                  borderRadius:         "6px",
-                  fontSize:             "13px",
-                },
-                elements: {
-                  card: {
-                    background:   "#1b1b1f",
-                    boxShadow:    "rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.2) 0px 15px 35px -5px, rgba(255,255,255,0.07) 0px 0px 0px 1px",
-                    border:       "none",
-                    borderRadius: "12px",
-                    overflow:     "hidden",
-                  },
-                  navbar: {
-                    background:   "#111113",
-                    borderRight:  "1px solid rgba(255,255,255,0.07)",
-                    padding:      "16px 8px",
-                    borderRadius: "0",
-                    gap:          "2px",
-                  },
-                  navbarButton: {
-                    color:        "#8b8b97",
-                    borderRadius: "6px",
-                    padding:      "8px 10px",
-                    gap:          "8px",
-                  },
-                  navbarButtonText: {
-                    color:      "#8b8b97",
-                    fontSize:   "13px",
-                    fontWeight: 400,
-                  },
-                  navbarButtonIcon:  { color: "#8b8b97" },
-                  pageScrollBox:     { background: "#1b1b1f" },
-                  profileSectionTitleText: {
-                    color:         "#62626d",
-                    fontSize:      "11px",
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase",
-                  },
-                  profileSectionPrimaryButton: {
-                    background:   "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)",
-                    border:       "none",
-                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.10), rgba(255,255,255,0.06) 0px 1px 0px inset, rgba(0,0,0,0.12) 0px 2px 4px",
-                    color:        "#8b8b97",
-                    borderRadius: "6px",
-                    padding:      "5px 10px",
-                    fontSize:     "12px",
-                  },
-                  headerTitle: {
-                    color:      "#f4f4f5",
-                    fontSize:   "15px",
-                    fontWeight: 600,
-                  },
-                  headerSubtitle:   { color: "#8b8b97", fontSize: "13px" },
-                  dividerLine:      { background: "rgba(255,255,255,0.07)" },
-                  modalCloseButton: { color: "#8b8b97", borderRadius: "6px" },
-                  formFieldInput: {
-                    background:   "rgba(255,255,255,0.05)",
-                    border:       "none",
-                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.09)",
-                    color:        "#f4f4f5",
-                    borderRadius: "6px",
-                  },
-                  formFieldLabel:    { color: "#8b8b97", fontSize: "12px", fontWeight: 500 },
-                  formButtonPrimary: {
-                    background:   "#fd7224",
-                    color:        "#ffffff",
-                    borderRadius: "6px",
-                    fontWeight:   500,
-                    fontSize:     "13px",
-                    boxShadow:    "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
-                  },
-                  menuList: {
-                    background:   "#1b1b1f",
-                    border:       "none",
-                    boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
-                    borderRadius: "10px",
-                  },
-                  menuItem: { color: "#8b8b97", borderRadius: "6px" },
-                  badge: {
-                    background: "rgba(255,255,255,0.05)",
-                    color:      "#8b8b97",
-                    boxShadow:  "0px 0px 0px 1px rgba(255,255,255,0.09)",
-                  },
-                },
-              },
-            }}
+            appearance={userButtonAppearance}
+            userProfileProps={{ appearance: userProfileAppearance }}
           />
         </div>
       </header>
@@ -1305,6 +1105,7 @@ export default function HomePage() {
               </div>
               <div style={{ position: "relative" }}>
                 <textarea
+                  className="ck-textarea"
                   ref={promptRef}
                   value={prompt}
                   onChange={e => setPrompt(e.target.value)}
@@ -1316,12 +1117,12 @@ export default function HomePage() {
                   onBlur={e => e.target.style.borderColor = "var(--border)"}
                   placeholder="描述你想生成的图像..."
                   rows={6}
-                  style={{ width: "100%", resize: "none", borderRadius: 10, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
+                  style={{ width: "100%", resize: "none", borderRadius: 8, padding: "10px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
                 />
 
                 {/* Prompt history dropdown */}
                 {showPromptHistory && recentPrompts.length > 0 && (
-                  <div style={{ marginTop: 6, borderRadius: 10, border: "1px solid var(--border-focus)", background: "var(--surface)", boxShadow: "0 8px 22px rgba(0,0,0,0.18)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
+                  <div style={{ marginTop: 6, borderRadius: 8, border: "1px solid var(--border-soft)", background: "var(--surface)", boxShadow: "var(--mosaic-menu-shadow)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
                     <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
                         <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
@@ -1394,7 +1195,7 @@ export default function HomePage() {
             {referenceImage && (
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
-                <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
                   <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
@@ -1428,25 +1229,23 @@ export default function HomePage() {
                       </span>
                     ) : null;
                   })()}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                  <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
                     {ASPECT_OPTIONS.map(opt => {
                       const active = aspect === opt.value;
                       return (
                         <button
                           key={opt.value}
                           onClick={() => { setAspect(opt.value); clearImages(); }}
+                          className="ck-option-card"
+                          data-active={active}
                           style={{
                             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                            gap: 6, padding: "10px 4px", borderRadius: 8, border: "none",
-                            background: active ? "rgba(253,114,36,0.14)" : "rgba(255,255,255,0.03)",
-                            boxShadow: active
-                              ? "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px"
-                              : "rgba(255,255,255,0.09) 0px 0px 0px 1px",
-                            color: active ? "var(--accent)" : "var(--text-muted)",
+                            gap: 5, padding: "8px 4px", minHeight: 60, borderRadius: 6, border: "none",
+                            color: active ? "var(--btn-text)" : "var(--text-muted)",
                             cursor: "pointer", transition: "background 0.15s, box-shadow 0.15s, color 0.15s", fontSize: 11,
                           }}
                         >
-                          <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
+                          <i className={opt.icon} style={{ fontSize: 16, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
                           {opt.label}
                         </button>
                       );
@@ -1459,11 +1258,17 @@ export default function HomePage() {
             {/* Quality */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
-              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
+              <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
                 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
-                  <button key={opt.value} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                    <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
-                  </button>
+                  (() => {
+                    const active = aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value;
+                    return (
+                      <button key={opt.value} data-active={active} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
+                        <span style={{ color: active ? "#fff" : "currentColor" }}>{opt.label}</span>
+                      </button>
+                    );
+                  })()
                 ))}
               </div>
             </div>
@@ -1471,10 +1276,11 @@ export default function HomePage() {
             {/* Count */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-apps-line">生成数量</SideLabel>
-              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
+              <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
                 {COUNT_OPTIONS.map((opt, i) => (
-                  <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                    <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.n}
+                  <button key={opt.n} data-active={count === opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: count === opt.n ? "#fff" : "currentColor" }} />
+                    <span style={{ color: count === opt.n ? "#fff" : "currentColor" }}>{opt.n}</span>
                   </button>
                 ))}
               </div>
@@ -1498,7 +1304,7 @@ export default function HomePage() {
                     {history.slice(0, 10).map(entry => (
                       <div
                         key={entry.id}
-                        className="history-item"
+                        className="history-item ck-data-row"
                         style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
                         onClick={() => restoreHistory(entry)}
                         onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-focus)")}
@@ -1543,26 +1349,27 @@ export default function HomePage() {
           {/* Generate Button */}
           <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
             <button
+              className="ck-primary-btn"
               onClick={handleGenerate}
               disabled={!prompt.trim() || loading}
               style={{
                 width: "100%",
                 padding: "11px 0",
-                borderRadius: 10,
+                borderRadius: 8,
                 fontSize: 14,
                 fontWeight: 500,
                 border: "none",
                 cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
-                background: !prompt.trim() || loading ? "var(--surface-3)" : "#fd7224",
-                color: !prompt.trim() || loading ? "var(--text-muted)" : "#ffffff",
+                background: !prompt.trim() || loading ? "var(--surface-3)" : "var(--accent)",
+                color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
                 transition: "all 0.15s",
                 boxShadow: !prompt.trim() || loading
-                  ? "rgba(255,255,255,0.07) 0px 0px 0px 1px"
-                  : "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
+                  ? "0px 0px 0px 1px var(--border-soft)"
+                  : "var(--mosaic-primary-shadow)",
               }}
             >
               {loading ? (
@@ -1572,7 +1379,7 @@ export default function HomePage() {
                 </>
               ) : (
                 <>
-                  <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1 }} />
+                  <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, position: "relative", zIndex: 1 }} />
                   生成图像
                   <span
                     className="gen-btn-hint"
@@ -1638,7 +1445,7 @@ export default function HomePage() {
 
           {/* Error */}
           {error && !loading && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "28px 32px", borderRadius: 16, border: "1px solid var(--border-focus)", background: "var(--surface)", maxWidth: 360, textAlign: "center" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "28px 32px", borderRadius: 12, border: "1px solid var(--border-focus)", background: "var(--surface)", maxWidth: 360, textAlign: "center" }}>
               <i className="ri-error-warning-line" style={{ fontSize: 22, lineHeight: 1, color: "var(--text-secondary)" }} />
               <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.65 }}>{error}</p>
               <button
@@ -1664,7 +1471,7 @@ export default function HomePage() {
                   <div
                     key={img.url ?? (img.b64 ? `b64-${i}-${img.b64.length}` : String(i))}
                     className="img-card"
-                    style={{ position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: displayAspect, cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
+                    style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)", aspectRatio: displayAspect, cursor: "zoom-in", animation: `fadeUp 0.3s ease ${i * 0.06}s both` }}
                     onClick={() => setLightboxIdx(i)}
                   >
                     {src ? (
@@ -1744,7 +1551,7 @@ export default function HomePage() {
                             alignItems: "center",
                             gap: 8,
                             padding: 7,
-                            borderRadius: 10,
+                            borderRadius: 8,
                             border: "1px solid",
                             borderColor: active ? "var(--accent)" : "var(--border)",
                             background: active ? "var(--accent-dim)" : "var(--surface-2)",
@@ -1779,7 +1586,7 @@ export default function HomePage() {
           {/* Empty state */}
           {images.length === 0 && !loading && !error && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 16, userSelect: "none", animation: "fadeIn 0.4s ease" }}>
-              <div style={{ width: 60, height: 60, borderRadius: 16, background: "var(--surface-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 60, height: 60, borderRadius: 12, background: "var(--surface-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <i className="ri-image-ai-line" style={{ fontSize: 28, lineHeight: 1, color: "var(--text-muted)" }} />
               </div>
               <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5 }}>
@@ -1860,14 +1667,15 @@ export default function HomePage() {
           <span style={{ flex: 1 }} />
           {/* 发送按钮 */}
           <button
+            className="ck-primary-btn"
             onClick={handleGenerate}
             disabled={!prompt.trim() || loading}
             style={{
               padding: "8px 18px",
               borderRadius: 12,
               border: "none",
-              background: !prompt.trim() || loading ? "rgba(255,255,255,0.07)" : "#fd7224",
-              color: !prompt.trim() || loading ? "var(--text-muted)" : "#ffffff",
+              background: !prompt.trim() || loading ? "var(--mosaic-control-hover)" : "var(--accent)",
+              color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
               fontSize: 14,
               fontWeight: 500,
               cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
@@ -1879,7 +1687,7 @@ export default function HomePage() {
               letterSpacing: "-0.01em",
               boxShadow: !prompt.trim() || loading
                 ? "none"
-                : "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
+                : "var(--mosaic-primary-shadow)",
             }}
           >
             {loading ? (
@@ -1931,7 +1739,7 @@ export default function HomePage() {
           {referenceImage && (
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
-              <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+              <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
                 <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
@@ -1963,14 +1771,16 @@ export default function HomePage() {
                     </span>
                   ) : null;
                 })()}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
                   {ASPECT_OPTIONS.map(opt => {
                     const active = aspect === opt.value;
                     return (
                       <button
                         key={opt.value}
                         onClick={() => { setAspect(opt.value); clearImages(); }}
-                        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                        className="ck-option-card"
+                        data-active={active}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 6, border: "none", color: active ? "var(--btn-text)" : "var(--text-muted)", cursor: "pointer", transition: "background 0.15s, box-shadow 0.15s, color 0.15s", fontSize: 11 }}
                       >
                         <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
                         {opt.label}
@@ -1985,11 +1795,17 @@ export default function HomePage() {
           {/* Quality */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+            <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
               {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
-                <button key={opt.value} onClick={() => setQuality(opt.value)} style={{ ...segBtn(quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
-                </button>
+                (() => {
+                  const active = quality === opt.value;
+                  return (
+                    <button key={opt.value} data-active={active} onClick={() => setQuality(opt.value)} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                      <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
+                      <span style={{ color: active ? "#fff" : "currentColor" }}>{opt.label}</span>
+                    </button>
+                  );
+                })()
               ))}
             </div>
           </div>
@@ -1997,10 +1813,11 @@ export default function HomePage() {
           {/* Count */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             <SideLabel icon="ri-apps-line">生成数量</SideLabel>
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+            <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
               {COUNT_OPTIONS.map((opt, i) => (
-                <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.n}
+                <button key={opt.n} data-active={count === opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: count === opt.n ? "#fff" : "currentColor" }} />
+                  <span style={{ color: count === opt.n ? "#fff" : "currentColor" }}>{opt.n}</span>
                 </button>
               ))}
             </div>
@@ -2023,7 +1840,7 @@ export default function HomePage() {
                   {history.slice(0, 10).map(entry => (
                     <div
                       key={entry.id}
-                      className="history-item"
+                      className="history-item ck-data-row"
                       style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
                       onClick={() => { restoreHistory(entry); setMobileSettingsOpen(false); }}
                     >
@@ -2071,7 +1888,7 @@ export default function HomePage() {
             <img
               src={imageSrc(images[lightboxIdx])}
               alt="大图预览"
-              style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 14, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
+              style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
               onClick={e => e.stopPropagation()}
             />
           ) : null}
@@ -2121,7 +1938,7 @@ export default function HomePage() {
       {toast && (
         <div
           key={toast.id}
-          style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100, padding: "9px 16px", borderRadius: 10, background: dark ? "rgba(32,32,32,0.96)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border-focus)", color: "var(--text-primary)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", backdropFilter: "blur(12px)", animation: "fadeUp 0.2s ease", whiteSpace: "nowrap" }}
+          style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 100, padding: "9px 16px", borderRadius: 8, background: dark ? "rgba(32,32,32,0.96)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border-focus)", color: "var(--text-primary)", fontSize: 13, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 8px 32px rgba(0,0,0,0.2)", backdropFilter: "blur(12px)", animation: "fadeUp 0.2s ease", whiteSpace: "nowrap" }}
         >
           <i className={toast.type === "error" ? "ri-error-warning-line" : toast.type === "warning" ? "ri-alert-line" : "ri-check-line"} style={{ fontSize: 16, lineHeight: 1 }} /> {toast.msg}
         </div>
@@ -2143,20 +1960,21 @@ function GeminiAspectGrid({ value, onChange }: { value: string; onChange: (v: st
         key={opt.value}
         onClick={() => onChange(opt.value)}
         title={opt.value}
+        className="ck-option-card"
+        data-active={active}
         style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           gap: 5,
-          padding: "8px 3px",
-          borderRadius: 7,
-          border: "1px solid",
-          borderColor: active ? "var(--accent)" : "var(--border)",
-          background: active ? "var(--accent-dim)" : "transparent",
-          color: active ? "var(--accent)" : "var(--text-muted)",
+          minHeight: 46,
+          padding: "7px 3px",
+          borderRadius: 6,
+          border: "none",
+          color: active ? "var(--btn-text)" : "var(--text-muted)",
           cursor: "pointer",
-          transition: "all 0.15s",
+          transition: "background 0.15s, box-shadow 0.15s, color 0.15s",
           fontSize: 10,
           fontFamily: "var(--font-space)",
           lineHeight: 1,
