@@ -1294,8 +1294,8 @@ export default function HomePage() {
                   onClick={() => setShowHistory(h => !h)}
                   style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-                    <i className="ri-history-line" style={{ fontSize: 14, lineHeight: 1 }} /> 历史 ({history.length})
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                    <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1, fontWeight: 400, color: "var(--text-secondary)" }} /> 历史 ({history.length})
                   </span>
                   <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
                 </button>
@@ -1595,7 +1595,16 @@ export default function HomePage() {
               </div>
               <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5 }}>
                 <p style={{ fontSize: 14, color: "var(--text-secondary)" }}>输入提示词，开始生成图像</p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>支持中英文描述 · <kbd style={{ fontFamily: "var(--font-space)", fontSize: 11, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>⌘↵</kbd> 快速生成</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span>支持中英文描述</span>
+                  <span>·</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <kbd style={{ fontFamily: "var(--font-space)", fontSize: 11, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>⌘</kbd>
+                    <span>+</span>
+                    <kbd style={{ fontFamily: "var(--font-space)", fontSize: 11, padding: "1px 5px", borderRadius: 4, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>Enter</kbd>
+                    <span>快速生成</span>
+                  </span>
+                </p>
               </div>
             </div>
           )}
@@ -1834,8 +1843,8 @@ export default function HomePage() {
                 onClick={() => setShowHistory(h => !h)}
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
               >
-                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-                  <i className="ri-history-line" style={{ fontSize: 14, lineHeight: 1 }} /> 历史 ({history.length})
+                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                  <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1, fontWeight: 400, color: "var(--text-secondary)" }} /> 历史 ({history.length})
                 </span>
                 <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
               </button>
@@ -2016,8 +2025,8 @@ function GeminiAspectGrid({ value, onChange }: { value: string; onChange: (v: st
 /* ── Sidebar label helper ── */
 function SideLabel({ children, icon }: { children: React.ReactNode; icon?: string }) {
   return (
-    <span style={{ fontSize: 11, fontWeight: 500, color: "var(--text-muted)", letterSpacing: "0.07em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 5 }}>
-      {icon && <i className={icon} style={{ fontSize: 14, lineHeight: 1 }} />}
+    <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+      {icon && <i className={icon} style={{ fontSize: 16, lineHeight: 1, fontWeight: 400, color: "var(--text-secondary)" }} />}
       {children}
     </span>
   );
