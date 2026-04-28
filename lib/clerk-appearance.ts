@@ -1,6 +1,7 @@
 import type { NextClerkProviderProps } from "@clerk/nextjs/types";
 
 type ClerkAppearance = NonNullable<NextClerkProviderProps["appearance"]>;
+type ClerkLocalization = NonNullable<NextClerkProviderProps["localization"]>;
 
 export const clerkMosaic = {
   color: {
@@ -102,13 +103,24 @@ export const clerkAppearance = {
     identityPreviewText: { color: "var(--text-primary)" },
     identityPreviewEditButton: { color: "var(--accent)" },
     badge: {
-      background: clerkMosaic.color.surface3,
-      color: clerkMosaic.color.text,
-      boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
-      fontSize: "10px",
+      background: "rgba(255,255,255,0.022)",
+      color: "rgba(244,244,245,0.84)",
+      WebkitTextFillColor: "rgba(244,244,245,0.84)",
+      boxShadow: "0px 0px 0px 1px rgba(255,255,255,0.08)",
+      fontSize: "11px",
+      fontWeight: 500,
     },
   },
 } satisfies ClerkAppearance;
+
+export const clerkLocalization = {
+  signIn: {
+    start: {
+      actionText: "Don't have an account?",
+    },
+  },
+  lastAuthenticationStrategy: "Last used",
+} satisfies ClerkLocalization;
 
 // 登录页独立暗色 appearance：全部使用硬编码值，避免 Clerk 内联样式无法解析 CSS 变量
 export const signInAppearance = {
@@ -164,10 +176,12 @@ export const signInAppearance = {
       fontSize: "13px",
     },
     badge: {
-      background: "rgba(253,114,36,0.14)",
-      color: clerkMosaic.color.accent,
-      boxShadow: "0px 0px 0px 1px rgba(253,114,36,0.32)",
-      fontSize: "10px",
+      background: "rgba(255,255,255,0.022)",
+      color: "rgba(244,244,245,0.84)",
+      WebkitTextFillColor: "rgba(244,244,245,0.84)",
+      boxShadow: "0px 0px 0px 1px rgba(255,255,255,0.08)",
+      fontSize: "11px",
+      fontWeight: 500,
     },
     footerActionText: {
       color: clerkMosaic.color.textMuted,

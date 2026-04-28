@@ -812,10 +812,33 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   color: var(--text-secondary) !important;
 }
 .cl-badge {
-  background: rgba(253,114,36,0.14) !important;
-  color: var(--accent) !important;
-  box-shadow: 0 0 0 1px rgba(253,114,36,0.32) !important;
-  font-size: 10px !important;
+  background: rgba(255,255,255,0.022) !important;
+  color: rgba(244,244,245,0.84) !important;
+  -webkit-text-fill-color: rgba(244,244,245,0.84) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 999px !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+.cl-badge *,
+[data-localization-key="lastAuthenticationStrategy"],
+[data-localization-key="lastAuthenticationStrategy"] * {
+  color: rgba(244,244,245,0.84) !important;
+  -webkit-text-fill-color: rgba(244,244,245,0.84) !important;
+}
+.cl-socialButtonsBlockButton .cl-badge,
+.cl-socialButtonsBlockButton [data-localization-key="lastAuthenticationStrategy"] {
+  background: rgba(255,255,255,0.02) !important;
+  color: rgba(244,244,245,0.82) !important;
+  -webkit-text-fill-color: rgba(244,244,245,0.82) !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08) !important;
+}
+.cl-socialButtonsBlockButton [data-localization-key="lastAuthenticationStrategy"] {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
 }
 .cl-modalContent .cl-navbar [class*="footer" i],
 .cl-modalContent .cl-navbar [class*="powered" i] {
@@ -841,6 +864,23 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   word-spacing: normal !important;
   font-kerning: normal !important;
   font-variant-ligatures: normal !important;
+}
+.cl-footerAction {
+  display: block !important;
+  text-align: center !important;
+  padding: 16px 32px !important;
+  font-family: var(--font-cn), system-ui, sans-serif !important;
+}
+.cl-footerActionText {
+  display: inline !important;
+  margin-right: 4px !important;
+  white-space: normal !important;
+  font-family: inherit !important;
+}
+.cl-footerActionLink {
+  display: inline !important;
+  margin-left: 0 !important;
+  font-family: inherit !important;
 }
 .cl-footerActionLink {
   color: var(--accent) !important;
@@ -880,7 +920,9 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 }
 .cl-signIn-start .cl-footer > div:last-child,
 .cl-signUp-start .cl-footer > div:last-child {
-  display: none !important;
+  display: flex !important;
+  justify-content: center !important;
+  padding: 12px 20px 14px !important;
 }
 .cl-signIn-start .cl-footer::before,
 .cl-signIn-start .cl-footer::after,
@@ -888,6 +930,27 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-signUp-start .cl-footer::after {
   display: none !important;
   background: none !important;
+}
+.cl-signIn-start .cl-footer > div:last-child p[data-variant="buttonSmall"][data-color="inherit"],
+.cl-signUp-start .cl-footer > div:last-child p[data-variant="buttonSmall"][data-color="inherit"] {
+  display: block !important;
+  color: rgba(244,244,245,0.68) !important;
+  font-family: var(--font-cn), system-ui, sans-serif !important;
+}
+.cl-signIn-start .cl-footer > div:last-child p[data-variant="body"][data-color="inherit"],
+.cl-signUp-start .cl-footer > div:last-child p[data-variant="body"][data-color="inherit"] {
+  display: none !important;
+}
+.cl-signIn-start .cl-footer > div:last-child a[aria-label="Clerk logo"],
+.cl-signUp-start .cl-footer > div:last-child a[aria-label="Clerk logo"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  color: rgba(244,244,245,0.78) !important;
+  opacity: 0.92 !important;
+}
+.cl-signIn-start .cl-footer > div:last-child a[aria-label="Clerk logo"] svg,
+.cl-signUp-start .cl-footer > div:last-child a[aria-label="Clerk logo"] svg {
+  display: block !important;
 }
 /* OTP / 验证码输入框文字颜色 */
 .cl-otpCodeFieldInput,
