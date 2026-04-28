@@ -109,20 +109,75 @@ export const clerkAppearance = {
   },
 } satisfies ClerkAppearance;
 
+// 登录页独立暗色 appearance：全部使用硬编码值，避免 Clerk 内联样式无法解析 CSS 变量
 export const signInAppearance = {
-  ...clerkAppearance,
   variables: {
-    ...variables,
+    colorBackground: clerkMosaic.color.surface,
+    colorText: clerkMosaic.color.text,
+    colorTextSecondary: clerkMosaic.color.textSecondary,
+    colorPrimary: clerkMosaic.color.accent,
+    colorInputBackground: "#33333e",
+    colorInputText: clerkMosaic.color.text,
+    colorNeutral: clerkMosaic.color.textSecondary,
+    borderRadius: clerkMosaic.radius.control,
     fontSize: "14px",
+    spacingUnit: "0.85rem",
   },
   elements: {
     ...clerkAppearance.elements,
     card: {
-      background: "var(--surface)",
+      background: clerkMosaic.color.surface,
       border: "none",
       boxShadow: "none",
       borderRadius: "0",
       padding: "22px 24px 18px",
+    },
+    formFieldInput: {
+      background: "#33333e",
+      border: "none",
+      boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
+      color: clerkMosaic.color.text,
+      borderRadius: clerkMosaic.radius.control,
+    },
+    formButtonPrimary: {
+      background: clerkMosaic.color.accent,
+      backgroundColor: clerkMosaic.color.accent,
+      color: "#ffffff",
+      borderRadius: clerkMosaic.radius.control,
+      fontWeight: 600,
+      fontSize: "14px",
+      boxShadow: clerkMosaic.shadow.primary,
+      border: "none",
+    },
+    socialButtonsBlockButton: {
+      background: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)",
+      border: "none",
+      boxShadow: clerkMosaic.shadow.button,
+      color: clerkMosaic.color.text,
+      borderRadius: clerkMosaic.radius.control,
+    },
+    socialButtonsBlockButtonText: {
+      color: clerkMosaic.color.text,
+      fontSize: "13px",
+    },
+    badge: {
+      background: clerkMosaic.color.surface3,
+      color: clerkMosaic.color.textSecondary,
+      boxShadow: `0px 0px 0px 1px ${clerkMosaic.color.border}`,
+      fontSize: "10px",
+    },
+    footerActionText: {
+      color: clerkMosaic.color.textMuted,
+      letterSpacing: "0",
+      wordSpacing: "0",
+    },
+    footerActionLink: {
+      color: clerkMosaic.color.textSecondary,
+    },
+    otpCodeFieldInput: {
+      color: clerkMosaic.color.text,
+      caretColor: clerkMosaic.color.accent,
+      background: "#33333e",
     },
   },
 } satisfies ClerkAppearance;
