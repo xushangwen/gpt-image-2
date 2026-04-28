@@ -152,15 +152,26 @@ html, body {
   opacity: 1;
 }
 
-/* ── Action buttons hover ── */
+/* ── Action buttons ── */
+.action-btn {
+  background: linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.01) 100%);
+  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.09), rgba(255,255,255,0.05) 0px 1px 0px inset, rgba(0,0,0,0.12) 0px 2px 4px;
+  transition: box-shadow 0.15s, background 0.15s, color 0.15s;
+}
 .action-btn:hover {
-  border-color: var(--border-focus) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%) !important;
+  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.14), rgba(255,255,255,0.07) 0px 1px 0px inset, rgba(0,0,0,0.15) 0px 2px 4px !important;
   color: var(--text-primary) !important;
 }
 
-/* ── Theme toggle hover ── */
+/* ── Theme toggle ── */
+.theme-btn {
+  background: linear-gradient(180deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.01) 100%);
+  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.09), rgba(255,255,255,0.05) 0px 1px 0px inset;
+}
 .theme-btn:hover {
-  border-color: var(--border-focus) !important;
+  background: linear-gradient(180deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 100%) !important;
+  box-shadow: 0px 0px 0px 1px rgba(255,255,255,0.14), rgba(255,255,255,0.07) 0px 1px 0px inset !important;
   color: var(--text-primary) !important;
 }
 

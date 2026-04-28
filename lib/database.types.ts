@@ -116,6 +116,10 @@ export type Database = {
         Args: { p_user_id: string; p_amount: number };
         Returns: number;
       };
+      confirm_order_and_grant_credits: {
+        Args: { p_order_id: string; p_admin_email: string };
+        Returns: Database["public"]["Tables"]["orders"]["Row"];
+      };
     };
   };
 };

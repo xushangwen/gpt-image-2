@@ -81,7 +81,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
           </div>
           <button
             onClick={onClose}
-            style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)", boxShadow: "0px 0px 0px 1px rgba(255,255,255,0.10), rgba(255,255,255,0.05) 0px 1px 0px inset", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
           </button>
@@ -149,14 +149,14 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                   padding: "12px 0",
                   borderRadius: 8,
                   border: "none",
-                  background: "var(--accent)",
-                  color: "var(--btn-text)",
+                  background: "linear-gradient(180deg, #ff8c47 0%, #fd7224 100%)",
+                  color: "#111113",
                   fontSize: 14,
                   fontWeight: 600,
                   cursor: loading ? "not-allowed" : "pointer",
                   opacity: loading ? 0.6 : 1,
                   transition: "opacity 0.15s",
-                  boxShadow: "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.2) 0px 2px 3px",
+                  boxShadow: "rgba(253,114,36,0.55) 0px 0px 0px 1px, rgba(255,255,255,0.14) 0px 1px 0px inset, rgba(34,42,53,0.25) 0px 4px 10px, rgba(0,0,0,0.35) 0px 2px 3px",
                 }}
               >
                 {loading ? "生成中..." : `生成订单 · ¥${pkg.price_yuan}`}

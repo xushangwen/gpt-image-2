@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 import { getSupabase } from "@/lib/supabase";
+import { fetchSafeUrl, UrlSafetyError } from "@/lib/url-safety";
 
 export const maxDuration = 300;
 
@@ -185,7 +186,7 @@ async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
     return img;
   }
   try {
-    const res = await fetch(img.url, { signal: AbortSignal.timeout(30_000) });
+    const res = await fetchSafeUrl(img.url, { signal: AbortSignal.timeout(30_000) });
     if (!res.ok) {
       console.warn("[generate] url fetch failed:", res.status);
       return img;
@@ -194,6 +195,10 @@ async function resolveImageResult(img: ImageResult): Promise<ImageResult> {
     const b64 = Buffer.from(await res.arrayBuffer()).toString("base64");
     return { b64, mediaType };
   } catch (err) {
+    if (err instanceof UrlSafetyError) {
+      console.warn("[generate] blocked unsafe image url:", err.message);
+      return img;
+    }
     console.warn("[generate] url fetch error:", err instanceof Error ? err.message : String(err));
     return img;
   }

@@ -1,0 +1,42 @@
+{
+  "card": {
+    "background": "rgba(0, 0, 0, 0)",
+    "borderRadius": "12px",
+    "border": "0px solid color(srgb 0 0 0 / 0.11)",
+    "boxShadow": "color(srgb 0 0 0 / 0.08) 0px 5px 15px 0px, color(srgb 0 0 0 / 0.2) 0px 15px 35px -5px, color(srgb 0 0 0 / 0.07) 0px 0px 0px 1px",
+    "padding": "0px"
+  },
+  "button": {
+    "background": "rgb(108, 71, 255)",
+    "color": "rgb(255, 255, 255)",
+    "borderRadius": "6px",
+    "border": "0px solid rgb(108, 71, 255)",
+    "fontWeight": "500",
+    "fontSize": "14px",
+    "padding": "6px 12px"
+  },
+  "input": {
+    "background": "rgba(0, 0, 0, 0)",
+    "borderRadius": "6px",
+    "border": "0px solid color(srgb 0 0 0 / 0.11)",
+    "color": "rgb(43, 43, 52)",
+    "fontSize": "14px",
+    "padding": "6px 12px"
+  },
+  "rootBox": {
+    "background": "rgba(0, 0, 0, 0)",
+    "borderRadius": "0px",
+    "boxShadow": "none"
+  },
+  "cssVars": {
+    "--clerk-color-primary": "#6c47ff",
+    "--clerk-color-background": "#fff",
+    "--clerk-color-foreground": "#2b2b34",
+    "--clerk-color-neutral": "#000",
+    "--clerk-color-border": "#000",
+    "--clerk-color-input": "transparent",
+    "--clerk-color-muted-foreground": "#5f5f6f",
+    "--clerk-font-family": "\"suisse\", \"suisse Fallback\""
+  },
+  "pageBackground": "rgb(255, 255, 255)"
+}

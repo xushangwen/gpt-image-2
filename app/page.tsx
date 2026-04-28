@@ -955,18 +955,17 @@ export default function HomePage() {
     void idbClearVersions();
   }, []);
 
-  /* Segmented control style */
+  /* Segmented control style — flat per Clerk tokens */
   const segBtn = (active: boolean): React.CSSProperties => ({
     flex: 1,
     padding: "7px 0",
     fontSize: 12,
     fontWeight: active ? 500 : 400,
     border: "none",
-    borderLeft: "1px solid var(--border)",
-    background: active ? "var(--accent-dim)" : "transparent",
+    background: active ? "rgba(253,114,36,0.14)" : "transparent",
     color: active ? "var(--accent)" : "var(--text-secondary)",
     cursor: "pointer",
-    transition: "all 0.15s",
+    transition: "background 0.15s, color 0.15s",
   });
 
   return (
@@ -1050,13 +1049,13 @@ export default function HomePage() {
         justifyContent: "space-between",
         padding: "0 20px",
         height: 50,
-        borderBottom: "1px solid var(--border)",
-        background: "var(--surface)",
+        background: "linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 100%), var(--surface)",
+        boxShadow: "0 1px 0 var(--border), inset 0 1px 0 rgba(255,255,255,0.05)",
         flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--text-primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--bg)" }} />
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(145deg, #ff8c47 0%, #fd7224 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "rgba(253,114,36,0.45) 0px 0px 0px 1px, rgba(255,255,255,0.12) 0px 1px 0px inset, rgba(253,114,36,0.2) 0px 3px 8px" }}>
+            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "#111113" }} />
           </div>
           <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
             ImageGen
@@ -1067,7 +1066,7 @@ export default function HomePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* AI 引擎切换 */}
-          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
             {(["openai", "gemini"] as const).map((eng, i) => {
               const active = aiEngine === eng;
               return (
@@ -1081,11 +1080,11 @@ export default function HomePage() {
                     fontSize: 11,
                     fontFamily: "var(--font-space)",
                     border: "none",
-                    borderLeft: i > 0 ? "1px solid var(--border)" : "none",
-                    background: active ? "var(--accent-dim)" : "transparent",
+                    borderLeft: i > 0 ? "1px solid rgba(255,255,255,0.07)" : "none",
+                    background: active ? "rgba(253,114,36,0.14)" : "transparent",
                     color: active ? "var(--accent)" : "var(--text-muted)",
                     cursor: "pointer",
-                    transition: "all 0.15s",
+                    transition: "background 0.15s, color 0.15s",
                     fontWeight: active ? 500 : 400,
                     lineHeight: 1,
                     display: "flex",
@@ -1101,7 +1100,7 @@ export default function HomePage() {
           </div>
           {/* 线路切换（仅 OpenAI 模式可见） */}
           {aiEngine === "openai" && (
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
               {(["tuzi", "bltcy"] as const).map((p) => {
                 const active = provider === p;
                 return (
@@ -1115,11 +1114,11 @@ export default function HomePage() {
                       fontSize: 11,
                       fontFamily: "var(--font-space)",
                       border: "none",
-                      borderLeft: p === "bltcy" ? "1px solid var(--border)" : "none",
-                      background: active ? "var(--accent-dim)" : "transparent",
+                      borderLeft: p === "bltcy" ? "1px solid rgba(255,255,255,0.07)" : "none",
+                      background: active ? "rgba(253,114,36,0.14)" : "transparent",
                       color: active ? "var(--accent)" : "var(--text-muted)",
                       cursor: "pointer",
-                      transition: "all 0.15s",
+                      transition: "background 0.15s, color 0.15s",
                       fontWeight: active ? 500 : 400,
                       lineHeight: 1,
                     }}
@@ -1162,7 +1161,7 @@ export default function HomePage() {
                   maxWidth:     "240px",
                   background:   "#1b1b1f",
                   border:       "none",
-                  boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
+                  boxShadow:    "rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.2) 0px 15px 35px -5px, rgba(255,255,255,0.07) 0px 0px 0px 1px",
                   borderRadius: "12px",
                   padding:      "6px",
                 },
@@ -1206,7 +1205,7 @@ export default function HomePage() {
                 elements: {
                   card: {
                     background:   "#1b1b1f",
-                    boxShadow:    "0px 5px 15px rgba(0,0,0,0.12), 0px 15px 35px -5px rgba(0,0,0,0.28), 0px 0px 0px 1px rgba(255,255,255,0.07)",
+                    boxShadow:    "rgba(0,0,0,0.08) 0px 5px 15px 0px, rgba(0,0,0,0.2) 0px 15px 35px -5px, rgba(255,255,255,0.07) 0px 0px 0px 1px",
                     border:       "none",
                     borderRadius: "12px",
                     overflow:     "hidden",
@@ -1238,9 +1237,9 @@ export default function HomePage() {
                     textTransform: "uppercase",
                   },
                   profileSectionPrimaryButton: {
-                    background:   "transparent",
+                    background:   "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)",
                     border:       "none",
-                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.09)",
+                    boxShadow:    "0px 0px 0px 1px rgba(255,255,255,0.10), rgba(255,255,255,0.06) 0px 1px 0px inset, rgba(0,0,0,0.12) 0px 2px 4px",
                     color:        "#8b8b97",
                     borderRadius: "6px",
                     padding:      "5px 10px",
@@ -1264,11 +1263,11 @@ export default function HomePage() {
                   formFieldLabel:    { color: "#8b8b97", fontSize: "12px", fontWeight: 500 },
                   formButtonPrimary: {
                     background:   "#fd7224",
-                    color:        "#111113",
+                    color:        "#ffffff",
                     borderRadius: "6px",
-                    fontWeight:   600,
+                    fontWeight:   500,
                     fontSize:     "13px",
-                    boxShadow:    "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.2) 0px 2px 3px, rgba(0,0,0,0.24) 0px 1px 1px",
+                    boxShadow:    "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
                   },
                   menuList: {
                     background:   "#1b1b1f",
@@ -1292,7 +1291,7 @@ export default function HomePage() {
       <div className="layout-inner" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* ── Left Sidebar (desktop only) ── */}
-        <aside className="layout-sidebar" style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
+        <aside className="layout-sidebar" style={{ width: 280, flexShrink: 0, display: "flex", flexDirection: "column", background: "linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 60%), var(--surface)", boxShadow: "inset -1px 0 0 var(--border)", overflow: "hidden" }}>
           <div />
           <div className="layout-sidebar__scroll" style={{ flex: 1, overflowY: "auto", padding: "18px 14px", display: "flex", flexDirection: "column", gap: 18 }}>
 
@@ -1436,7 +1435,16 @@ export default function HomePage() {
                         <button
                           key={opt.value}
                           onClick={() => { setAspect(opt.value); clearImages(); }}
-                          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 4px", borderRadius: 8, border: "1px solid", borderColor: active ? "var(--accent)" : "var(--border)", background: active ? "var(--accent-dim)" : "transparent", color: active ? "var(--accent)" : "var(--text-muted)", cursor: "pointer", transition: "all 0.15s", fontSize: 11 }}
+                          style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                            gap: 6, padding: "10px 4px", borderRadius: 8, border: "none",
+                            background: active ? "rgba(253,114,36,0.14)" : "rgba(255,255,255,0.03)",
+                            boxShadow: active
+                              ? "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px"
+                              : "rgba(255,255,255,0.09) 0px 0px 0px 1px",
+                            color: active ? "var(--accent)" : "var(--text-muted)",
+                            cursor: "pointer", transition: "background 0.15s, box-shadow 0.15s, color 0.15s", fontSize: 11,
+                          }}
                         >
                           <i className={opt.icon} style={{ fontSize: 17, lineHeight: 1, transform: opt.rotate ? `rotate(${opt.rotate}deg)` : undefined, display: "inline-block" }} />
                           {opt.label}
@@ -1451,9 +1459,9 @@ export default function HomePage() {
             {/* Quality */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
-              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
                 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
-                  <button key={opt.value} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <button key={opt.value} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value), borderLeft: i === 0 ? "none" : "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                     <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.label}
                   </button>
                 ))}
@@ -1463,9 +1471,9 @@ export default function HomePage() {
             {/* Count */}
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-apps-line">生成数量</SideLabel>
-              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", boxShadow: "rgba(255,255,255,0.09) 0px 0px 0px 1px" }}>
                 {COUNT_OPTIONS.map((opt, i) => (
-                  <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  <button key={opt.n} onClick={() => setCount(opt.n)} style={{ ...segBtn(count === opt.n), borderLeft: i === 0 ? "none" : "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                     <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1 }} />{opt.n}
                   </button>
                 ))}
@@ -1545,14 +1553,16 @@ export default function HomePage() {
                 fontWeight: 500,
                 border: "none",
                 cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
-                background: !prompt.trim() || loading ? "var(--surface-2)" : "var(--accent)",
-                color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
+                background: !prompt.trim() || loading ? "var(--surface-3)" : "#fd7224",
+                color: !prompt.trim() || loading ? "var(--text-muted)" : "#ffffff",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
                 transition: "all 0.15s",
-                boxShadow: !prompt.trim() || loading ? "none" : "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.22) 0px 3px 6px, rgba(0,0,0,0.28) 0px 1px 2px",
+                boxShadow: !prompt.trim() || loading
+                  ? "rgba(255,255,255,0.07) 0px 0px 0px 1px"
+                  : "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
               }}
             >
               {loading ? (
@@ -1856,8 +1866,8 @@ export default function HomePage() {
               padding: "8px 18px",
               borderRadius: 12,
               border: "none",
-              background: !prompt.trim() || loading ? "rgba(128,128,128,0.15)" : "var(--accent)",
-              color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
+              background: !prompt.trim() || loading ? "rgba(255,255,255,0.07)" : "#fd7224",
+              color: !prompt.trim() || loading ? "var(--text-muted)" : "#ffffff",
               fontSize: 14,
               fontWeight: 500,
               cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
@@ -1867,7 +1877,9 @@ export default function HomePage() {
               transition: "all 0.15s",
               flexShrink: 0,
               letterSpacing: "-0.01em",
-              boxShadow: !prompt.trim() || loading ? "none" : "rgba(253,114,36,0.5) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px inset, rgba(34,42,53,0.22) 0px 3px 6px, rgba(0,0,0,0.28) 0px 1px 2px",
+              boxShadow: !prompt.trim() || loading
+                ? "none"
+                : "rgb(253,114,36) 0px 0px 0px 1px, rgba(255,255,255,0.07) 0px 1px 1px 0px inset, rgba(34,42,53,0.2) 0px 2px 3px 0px, rgba(0,0,0,0.24) 0px 1px 1px 0px",
             }}
           >
             {loading ? (

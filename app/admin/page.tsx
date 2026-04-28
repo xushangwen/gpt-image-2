@@ -39,16 +39,17 @@ export default function AdminPage() {
     setLoading(true);
     setError("");
     try {
-      const [ordersRes, usersRes] = await Promise.all([
-        fetch("/api/admin/grant").catch(() => null), // we'll use the orders list differently
+      const [pendingRes, usersRes] = await Promise.all([
+        fetch("/api/admin/orders"),
         fetch("/api/admin/users"),
       ]);
 
-      // Fetch pending + recent orders via dedicated endpoint
-      const pendingRes = await fetch("/api/admin/orders");
       if (pendingRes.ok) {
         const data = await pendingRes.json();
         setOrders(data.orders ?? []);
+      } else {
+        const data = await pendingRes.json();
+        setError(data.error ?? "订单加载失败");
       }
 
       if (usersRes?.ok) {

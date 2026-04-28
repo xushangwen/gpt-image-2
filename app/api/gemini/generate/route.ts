@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { getOrCreateCredits, getCreditsOnly, deductCredits } from "@/lib/credits";
+import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 
 export const maxDuration = 300;
 
@@ -253,13 +253,19 @@ export async function POST(req: NextRequest) {
       creditsRemaining = credits.credits_remaining;
     }
 
-    const apiKey = getApiKey();
-    const model = getModel();
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
 
     if (creditsRemaining < count) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
+
+    const newBalance = await deductCredits(userId, count);
+    if (newBalance < 0) {
+      throw new HttpError("积分不足，请购买套餐", 402);
+    }
+
+    const apiKey = getApiKey();
+    const model = getModel();
     // aspectRatio from payload takes priority; fall back to pixel-size conversion
     const resolvedAspect =
       typeof aspectRatio === "string" && aspectRatio.includes(":")
@@ -300,6 +306,7 @@ export async function POST(req: NextRequest) {
     );
 
     if (images.length === 0) {
+      await refundCredits(userId, count);
       const firstReason = failures[0] as PromiseRejectedResult | undefined;
       const msg = firstReason
         ? firstReason.reason instanceof Error
@@ -309,11 +316,9 @@ export async function POST(req: NextRequest) {
       throw new Error(msg);
     }
 
-    // ── 扣除积分（仅扣成功张数）──
-    try {
-      await deductCredits(userId, images.length);
-    } catch (err) {
-      console.warn("[gemini/generate] deduct credits failed:", err instanceof Error ? err.message : String(err));
+    const failedCount = count - images.length;
+    if (failedCount > 0) {
+      await refundCredits(userId, failedCount);
     }
 
     return NextResponse.json({

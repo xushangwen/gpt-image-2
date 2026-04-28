@@ -1,5 +1,4 @@
 import { getSupabase } from "./supabase";
-import { addCredits } from "./credits";
 
 export const PACKAGES = [
   { id: "starter",  name: "体验包", price_yuan: 18, credits: 80  },
@@ -52,27 +51,12 @@ export async function createOrder(
 
 export async function confirmOrder(orderId: string, adminEmail: string): Promise<void> {
   const db = getSupabase();
+  const { error } = await db.rpc("confirm_order_and_grant_credits", {
+    p_order_id: orderId,
+    p_admin_email: adminEmail,
+  });
 
-  const { data: order, error: fetchError } = await db
-    .from("orders")
-    .select("*")
-    .eq("id", orderId)
-    .eq("status", "pending")
-    .single();
-
-  if (fetchError || !order) throw new Error(`订单 ${orderId} 不存在或已处理`);
-
-  const pkg = PACKAGES.find(p => p.id === (order as Order).package_id);
-  if (!pkg) throw new Error("订单套餐数据异常");
-
-  const { error: updateError } = await db
-    .from("orders")
-    .update({ status: "confirmed", confirmed_at: new Date().toISOString(), confirmed_by: adminEmail })
-    .eq("id", orderId);
-
-  if (updateError) throw new Error(`更新订单状态失败: ${updateError.message}`);
-
-  await addCredits((order as Order).user_id, pkg.credits, orderId, adminEmail);
+  if (error) throw new Error(error.message || `订单 ${orderId} 处理失败`);
 }
 
 export async function listPendingOrders(): Promise<Order[]> {

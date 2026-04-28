@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fetchSafeUrl, parseSafeHttpUrl, UrlSafetyError } from "@/lib/url-safety";
 
 const DOWNLOAD_TIMEOUT_MS = 45_000;
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
@@ -28,57 +29,14 @@ function parseDownloadUrl(input: unknown) {
   if (typeof input !== "string") {
     throw new HttpError("下载地址无效", 400);
   }
-
-  let url: URL;
   try {
-    url = new URL(input);
-  } catch {
-    throw new HttpError("下载地址无效", 400);
+    return parseSafeHttpUrl(input, "下载地址无效");
+  } catch (err) {
+    if (err instanceof UrlSafetyError) {
+      throw new HttpError(err.message === "不支持访问内网地址" ? "不支持下载内网地址" : err.message, err.status);
+    }
+    throw err;
   }
-
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new HttpError("仅支持 HTTP(S) 图片下载", 400);
-  }
-  if (isBlockedHost(url.hostname)) {
-    throw new HttpError("不支持下载内网地址", 400);
-  }
-
-  return url;
-}
-
-function isBlockedHost(hostname: string) {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
-
-  // IPv6 in bracket notation
-  if (host.startsWith("[") && host.endsWith("]")) {
-    const inner = host.slice(1, -1);
-    if (inner === "::" || inner === "::1") return true;
-    // IPv4-mapped: ::ffff:a.b.c.d
-    if (inner.startsWith("::ffff:")) return isBlockedHost(inner.slice(7));
-    // Loopback, ULA (fc00::/7), link-local (fe80::/10), multicast (ff00::/8)
-    if (/^(::1$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:|ff[0-9a-f]{2}:)/i.test(inner)) return true;
-    return false;
-  }
-
-  // Bare IPv6 (no brackets) — treat as blocked for safety
-  if (host.includes(":")) return true;
-
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!ipv4) return false;
-
-  const parts = ipv4.slice(1).map(Number);
-  if (parts.some(part => Number.isNaN(part) || part < 0 || part > 255)) return true;
-
-  const [a, b] = parts;
-  return (
-    a === 10 ||
-    a === 127 ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 169 && b === 254) ||
-    (a === 0)
-  );
 }
 
 export async function POST(req: NextRequest) {
@@ -92,33 +50,16 @@ export async function POST(req: NextRequest) {
 
     let response: Response;
     try {
-      // Manual redirect following (max 2 hops) to catch redirect-based SSRF at each step
-      let currentUrl = url.href;
-      let hops = 0;
-      while (true) {
-        response = await fetch(currentUrl, {
+      response = await fetchSafeUrl(url, {
           signal: controller.signal,
-          redirect: "manual",
           headers: { Accept: "image/*,*/*;q=0.8" },
         });
-        if (response.status >= 300 && response.status < 400) {
-          if (hops >= 2) throw new HttpError("重定向次数过多", 400);
-          const location = response.headers.get("location");
-          if (!location) throw new HttpError("重定向地址无效", 400);
-          const next = new URL(location, currentUrl);
-          if (next.protocol !== "https:" && next.protocol !== "http:") {
-            throw new HttpError("仅支持 HTTP(S) 图片下载", 400);
-          }
-          if (isBlockedHost(next.hostname)) throw new HttpError("不支持下载内网地址", 400);
-          currentUrl = next.href;
-          hops++;
-          continue;
-        }
-        break;
-      }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
         throw new HttpError("图片下载超时，请稍后重试", 504);
+      }
+      if (err instanceof UrlSafetyError) {
+        throw new HttpError(err.message === "不支持访问内网地址" ? "不支持下载内网地址" : err.message, err.status);
       }
       throw err;
     } finally {
