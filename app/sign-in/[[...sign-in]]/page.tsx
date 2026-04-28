@@ -51,13 +51,8 @@ export default function SignInPage() {
           justify-content: center !important;
         }
 
-        /* Development mode badge — transparent bg, subtle border */
-        .cl-devBadge {
-          background:       transparent !important;
-          background-color: transparent !important;
-          border-top:       none !important;
-          box-shadow:       none !important;
-        }
+        /* Development mode badge — hidden on dev instances */
+        .cl-devBadge { display: none !important; }
 
         /* Autofill */
         .cl-formFieldInput:-webkit-autofill,

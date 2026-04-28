@@ -1021,6 +1021,9 @@ export default function HomePage() {
       /* Navbar title/subtitle — Clerk doesn't expose these via appearance elements */
       .cl-navbar h1, .cl-navbar h2, .cl-navbar h3 { color: #efefef; }
       .cl-navbar p, .cl-navbar [class*="subtitle" i], .cl-navbar [class*="Subtitle"] { color: #7a7a7a; }
+
+      /* Development mode badge — hidden on dev instances */
+      .cl-devBadge { display: none !important; }
     `}</style>
     {showPaymentModal && (
       <PaymentModal
