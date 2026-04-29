@@ -1,3 +1,5 @@
+import { promises as dns } from "dns";
+
 export class UrlSafetyError extends Error {
   constructor(message: string, public status = 400) {
     super(message);
@@ -53,6 +55,23 @@ export function parseSafeHttpUrl(input: string, invalidMessage = "地址无效")
   return url;
 }
 
+// Resolves hostname via DNS and verifies the actual IP is not private,
+// preventing DNS rebinding attacks where an attacker TTL-flips a domain to an internal IP.
+async function assertResolvedIpSafe(hostname: string) {
+  // Skip DNS lookup for raw IP addresses (already checked by parseSafeHttpUrl)
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.startsWith("[")) return;
+  try {
+    const { address } = await dns.lookup(hostname);
+    if (isBlockedHost(address)) {
+      throw new UrlSafetyError("不支持访问内网地址", 400);
+    }
+  } catch (err) {
+    if (err instanceof UrlSafetyError) throw err;
+    // DNS resolution failure — treat as blocked to be safe
+    throw new UrlSafetyError("域名解析失败", 400);
+  }
+}
+
 export async function fetchSafeUrl(
   input: string | URL,
   init: RequestInit & { maxRedirects?: number } = {}
@@ -62,6 +81,7 @@ export async function fetchSafeUrl(
   let hops = 0;
 
   while (true) {
+    await assertResolvedIpSafe(new URL(currentUrl).hostname);
     const response = await fetch(currentUrl, {
       ...requestInit,
       redirect: "manual",

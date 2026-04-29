@@ -21,10 +21,7 @@ export interface Order {
 
 function generateOrderId(): string {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const rand = Array.from({ length: 4 }, () =>
-    chars[Math.floor(Math.random() * chars.length)]
-  ).join("");
+  const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
   return `ORD-${date}-${rand}`;
 }
 

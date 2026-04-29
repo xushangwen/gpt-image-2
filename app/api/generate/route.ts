@@ -3,6 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 import { getSupabase } from "@/lib/supabase";
 import { fetchSafeUrl, UrlSafetyError } from "@/lib/url-safety";
+import { HttpError } from "@/lib/errors";
 
 export const maxDuration = 300;
 
@@ -62,12 +63,6 @@ const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg",
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 90_000;
-
-class HttpError extends Error {
-  constructor(message: string, public status = 500) {
-    super(message);
-  }
-}
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
@@ -625,6 +620,9 @@ function generateWithReference(
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) throw new HttpError("请先登录", 401);
+
     const raw = await readJson(req);
     const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
     const reqProvider: ProviderName | undefined =
@@ -648,8 +646,6 @@ export async function POST(req: NextRequest) {
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
 
     // ── 积分验证与扣除（先扣后生成，防并发超用）──
-    const { userId } = await auth();
-    if (!userId) throw new HttpError("请先登录", 401);
 
     let creditsRemaining = await getCreditsOnly(userId);
     if (creditsRemaining === null) {

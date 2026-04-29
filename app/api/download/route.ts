@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { fetchSafeUrl, parseSafeHttpUrl, UrlSafetyError } from "@/lib/url-safety";
+import { HttpError } from "@/lib/errors";
 
 const DOWNLOAD_TIMEOUT_MS = 45_000;
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
-
-class HttpError extends Error {
-  constructor(message: string, public status = 500) {
-    super(message);
-  }
-}
 
 function sanitizeFilename(input: unknown) {
   const fallback = `imagegen-${Date.now()}.jpg`;
@@ -41,6 +37,9 @@ function parseDownloadUrl(input: unknown) {
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+
     const body = await readBody(req);
     const url = parseDownloadUrl(body?.url);
     const filename = sanitizeFilename(body?.filename);

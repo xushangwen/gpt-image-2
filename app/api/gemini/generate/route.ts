@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
+import { HttpError } from "@/lib/errors";
 
 export const maxDuration = 300;
 export const preferredRegion = "iad1";
@@ -11,12 +12,6 @@ const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
-
-class HttpError extends Error {
-  constructor(message: string, public status = 500) {
-    super(message);
-  }
-}
 
 function getApiKey(): string {
   const key = process.env.GEMINI_API_KEY?.trim();

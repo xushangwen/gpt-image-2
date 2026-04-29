@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { HttpError } from "@/lib/errors";
 
 export const maxDuration = 60;
 export const preferredRegion = "iad1";
@@ -10,12 +12,6 @@ const PROVIDER_CHAT_ENDPOINTS: Record<Exclude<ProviderName, "custom">, string> =
   tuzi: "https://api.tu-zi.com/v1/chat/completions",
   bltcy: "https://api.bltcy.ai/v1/chat/completions",
 };
-
-class HttpError extends Error {
-  constructor(message: string, public status = 500) {
-    super(message);
-  }
-}
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
@@ -99,6 +95,9 @@ type ContentPart =
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) throw new HttpError("请先登录", 401);
+
     let body: {
       prompt?: unknown;
       aspect?: unknown;

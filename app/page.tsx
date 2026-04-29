@@ -770,6 +770,7 @@ export default function HomePage() {
       if (res.status === 402) {
         // Fetch current credits to show in modal
         fetch("/api/credits").then(r => r.json()).then(d => setCurrentCredits(d.credits_remaining ?? 0)).catch(() => {});
+        window.dispatchEvent(new CustomEvent("credits-refresh"));
         setShowPaymentModal(true);
         return;
       }
@@ -805,7 +806,7 @@ export default function HomePage() {
       };
       setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
-      void idbSaveVersion(versionEntry);
+      idbSaveVersion(versionEntry).catch(err => console.warn("[idb] save version failed:", err));
       window.dispatchEvent(new CustomEvent("credits-refresh"));
       setHistory(prev => {
         const next = [entry, ...prev].slice(0, MAX_HISTORY);
@@ -957,7 +958,7 @@ export default function HomePage() {
     saveHistory([]);
     setHistory([]);
     setVersions([]);
-    void idbClearVersions();
+    idbClearVersions().catch(err => console.warn("[idb] clear versions failed:", err));
   }, []);
 
   /* Segmented control style — flat per Clerk tokens */

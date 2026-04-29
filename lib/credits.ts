@@ -22,12 +22,22 @@ export async function getOrCreateCredits(userId: string, email: string): Promise
     .single();
 
   if (upserted) {
-    await db.from("credit_transactions").insert({
-      user_id: userId,
-      type: "welcome_bonus",
-      credits_delta: WELCOME_BONUS,
-      note: "新用户注册赠送",
-    });
+    // Guard against concurrent new-user requests both passing the upsert check.
+    // Best-effort: check if welcome_bonus was already recorded before inserting.
+    // Definitive fix requires a DB-level unique constraint on (user_id, type='welcome_bonus').
+    const { count } = await db
+      .from("credit_transactions")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("type", "welcome_bonus");
+    if (!count) {
+      await db.from("credit_transactions").insert({
+        user_id: userId,
+        type: "welcome_bonus",
+        credits_delta: WELCOME_BONUS,
+        note: "新用户注册赠送",
+      });
+    }
     return upserted as UserCredits;
   }
 

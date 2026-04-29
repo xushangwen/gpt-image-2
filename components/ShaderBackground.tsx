@@ -81,9 +81,11 @@ export default function ShaderBackground() {
     const gl = canvas.getContext("webgl");
     if (!gl) return;
 
+    const vertShader = compileShader(gl, gl.VERTEX_SHADER, VERT);
+    const fragShader = compileShader(gl, gl.FRAGMENT_SHADER, FRAG);
     const prog = gl.createProgram()!;
-    gl.attachShader(prog, compileShader(gl, gl.VERTEX_SHADER,   VERT));
-    gl.attachShader(prog, compileShader(gl, gl.FRAGMENT_SHADER, FRAG));
+    gl.attachShader(prog, vertShader);
+    gl.attachShader(prog, fragShader);
     gl.linkProgram(prog);
     gl.useProgram(prog);
 
@@ -120,6 +122,10 @@ export default function ShaderBackground() {
     return () => {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(rafRef.current);
+      gl.deleteProgram(prog);
+      gl.deleteBuffer(buf);
+      gl.deleteShader(vertShader);
+      gl.deleteShader(fragShader);
     };
   }, []);
 
