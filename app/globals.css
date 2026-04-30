@@ -1212,6 +1212,12 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   display: block !important;
 }
 /* OTP / 验证码输入框 */
+
+/* 格子容器：加间距，让每格视觉独立（紧贴时 box-shadow 互相遮盖会合并） */
+.cl-otpCodeFieldInputs {
+  gap: 8px !important;
+}
+
 .cl-otpCodeFieldInput,
 .cl-otpCodeField input,
 .cl-otpCodeFieldInput__input {
@@ -1227,7 +1233,7 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   color: var(--text-muted) !important;
   -webkit-text-fill-color: var(--text-muted) !important;
 }
-/* OTP 聚焦：用橙色紧贴环，不用 3px 大光晕防格间溢出 */
+/* OTP 聚焦：橙色紧贴环 + 淡光晕，不影响相邻格 */
 .cl-otpCodeFieldInput:focus {
   box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4px rgba(253,114,36,0.18) !important;
   outline: none !important;
