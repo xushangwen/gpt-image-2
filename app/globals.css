@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* ════════════════════════════════════════════════
+   1. DESIGN TOKENS — CSS Variables (Dark + Light)
+   ════════════════════════════════════════════════ */
+
 /* ── 暗色主题（默认）── Clerk Mosaic design tokens + orange accent */
 :root {
   --bg: #111113;
@@ -61,6 +65,8 @@
     0 0 0 1px rgba(0,0,0,0.28),
     0 1px 3px rgba(0,0,0,0.10),
     0 4px 10px rgba(0,0,0,0.08);
+  --ck-segmented-bg: rgba(255,255,255,0.018);
+  --ck-segmented-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
 }
 
 /* ── 亮色主题 ── */
@@ -122,7 +128,13 @@
     0 1px 2px rgba(0,0,0,0.032),
     0 4px 8px rgba(0,0,0,0.028),
     0 10px 18px rgba(0,0,0,0.018);
+  --ck-segmented-bg: rgba(0,0,0,0.028);
+  --ck-segmented-shadow: inset 0 0 0 1px rgba(0,0,0,0.07);
 }
+
+/* ════════════════════════════════════════════════
+   2. BASE — Reset, Body, Scrollbar, Selection
+   ════════════════════════════════════════════════ */
 
 * { box-sizing: border-box; }
 
@@ -140,6 +152,10 @@ html, body {
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 2px; }
+
+/* ════════════════════════════════════════════════
+   3. ANIMATIONS — Keyframes
+   ════════════════════════════════════════════════ */
 
 /* ── Animations ── */
 @keyframes shimmer {
@@ -162,6 +178,10 @@ html, body {
   0% { background-position: 140% 0; }
   100% { background-position: -140% 0; }
 }
+
+/* ════════════════════════════════════════════════
+   4. GENERATING STATE — Preview cards & grid
+   ════════════════════════════════════════════════ */
 
 /* ── Generating preview ── */
 .generating-card {
@@ -212,6 +232,11 @@ html, body {
   opacity: 1;
   pointer-events: auto;
 }
+
+/* ════════════════════════════════════════════════
+   5. BUTTON SYSTEM — ck-btn, primary, segmented,
+      overlay, action, lightbox nav
+   ════════════════════════════════════════════════ */
 
 /* ── Clerk-derived product primitives ── */
 .ck-app-header {
@@ -362,10 +387,141 @@ html, body {
   opacity: 0.42 !important;
 }
 
+/* Generate button variants — layout + disabled state override */
+.generate-btn {
+  width: 100%;
+  padding: 11px 0;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.generate-btn:not(:disabled) {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+  cursor: pointer;
+}
+
+.generate-btn:disabled {
+  background: var(--surface-3) !important;
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+  box-shadow: 0px 0px 0px 1px var(--border-soft) !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+/* Mobile generate button (compact, rounded) */
+.generate-btn--mobile {
+  padding: 8px 18px;
+  border-radius: 12px !important;
+  font-size: 14px !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  letter-spacing: -0.01em;
+}
+
+.generate-btn--mobile:not(:disabled) {
+  background: var(--accent) !important;
+  color: var(--btn-text) !important;
+  -webkit-text-fill-color: var(--btn-text) !important;
+  box-shadow: var(--mosaic-primary-shadow) !important;
+  cursor: pointer;
+}
+
+.generate-btn--mobile:disabled {
+  background: var(--mosaic-control-hover) !important;
+  color: var(--text-muted) !important;
+  -webkit-text-fill-color: var(--text-muted) !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+}
+
+/* Flex layout for action-btn (fills in what the ck-btn group doesn't set) */
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+
+/* Image card hover overlay buttons */
+.overlay-btn {
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: none;
+  background: rgba(0,0,0,0.52);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  gap: 5px;
+  font-size: 12px;
+}
+
+/* Lightbox top-right action buttons */
+.lightbox-btn-action {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+
+/* Lightbox prev/next navigation buttons */
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+  transition: opacity 0.15s, background 0.15s;
+}
+
 .ck-icon-btn {
   width: 32px !important;
   height: 32px !important;
   padding: 0 !important;
+}
+
+/* Ghost — transparent, minimal, used for inline text actions (e.g. clear history) */
+.ghost-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 3px 0;
 }
 
 .ck-segmented {
@@ -373,8 +529,8 @@ html, body {
   min-height: 30px;
   overflow: hidden;
   border-radius: var(--ck-radius-control) !important;
-  background: rgba(255,255,255,0.018) !important;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06) !important;
+  background: var(--ck-segmented-bg) !important;
+  box-shadow: var(--ck-segmented-shadow) !important;
 }
 
 .ck-segmented > button {
@@ -551,6 +707,10 @@ html, body {
   display: grid;
   gap: 5px;
 }
+
+/* ════════════════════════════════════════════════
+   6. OPTION CARDS — aspect ratio / quality selectors
+   ════════════════════════════════════════════════ */
 
 .ck-option-card {
   border: 0 !important;
@@ -757,6 +917,10 @@ html, body {
 :root[data-theme="light"] .mob-icon-btn:hover {
   background: var(--mosaic-control-hover);
 }
+
+/* ════════════════════════════════════════════════
+   7. CLERK OVERRIDES — Mosaic form, button, avatar
+   ════════════════════════════════════════════════ */
 
 /* ── Clerk Mosaic global states ── */
 .cl-formFieldInput::placeholder {
@@ -1197,6 +1361,10 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
     opacity: 1;
   }
 }
+
+/* ════════════════════════════════════════════════
+   8. RESPONSIVE — Tablet (769–1023px) · Mobile (≤768px)
+   ════════════════════════════════════════════════ */
 
 /* 移动端专属元素，桌面默认隐藏 */
 .mobile-input-bar,

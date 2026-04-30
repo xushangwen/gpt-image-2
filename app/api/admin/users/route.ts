@@ -1,17 +1,10 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { assertAdmin } from "@/lib/admin-auth";
 import { getSupabase } from "@/lib/supabase";
 
 export async function GET() {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
-
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const user = await currentUser();
-  const email = user?.emailAddresses[0]?.emailAddress ?? "";
-  if (!adminEmail || email !== adminEmail) {
-    return NextResponse.json({ error: "无权限" }, { status: 403 });
-  }
+  const ctx = await assertAdmin();
+  if (ctx instanceof NextResponse) return ctx;
 
   try {
     const { data, error } = await getSupabase()

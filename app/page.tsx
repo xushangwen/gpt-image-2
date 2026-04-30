@@ -5,13 +5,15 @@ import { UserButton } from "@clerk/nextjs";
 import CreditBadge from "@/components/CreditBadge";
 import PaymentModal from "@/components/PaymentModal";
 import { userButtonAppearance, userProfileAppearance } from "@/lib/clerk-appearance";
+import Spinner from "@/components/ui/Spinner";
+import Button from "@/components/ui/Button";
+import GeneratingCard from "@/components/GeneratingCard";
+import Lightbox from "@/components/Lightbox";
+import HistoryPanel from "@/components/HistoryPanel";
+import { formatTime } from "@/lib/format";
+import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry } from "@/lib/types";
 
-/* ── Types ── */
-type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
-type Quality = "low" | "medium" | "high";
-type ProviderChoice = "tuzi" | "bltcy";
-type AIEngine = "openai" | "gemini";
-type ImageResult = { b64?: string; url?: string; mediaType: string };
+/* ── Local types ── */
 type ReferenceImage = {
   name: string;
   dataUrl: string;
@@ -21,26 +23,7 @@ type ReferenceImage = {
   width: number;
   height: number;
 };
-type HistoryEntry = {
-  id: string;
-  prompt: string;
-  aspect: AspectRatio;
-  effectiveAspect?: string;
-  quality: Quality;
-  count: number;
-  timestamp: number;
-  thumbnail: string;
-  imageCount: number;
-  referenceName?: string;
-  versionLabel?: string;
-  engine?: AIEngine;
-};
 type ToastType = "success" | "error" | "warning";
-
-type VersionEntry = HistoryEntry & {
-  images: ImageResult[];
-  referenceThumbnail?: string;
-};
 
 /* ── Constants ── */
 const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: string; rotate?: number }[] = [
@@ -98,6 +81,8 @@ const LS_HISTORY = "imagegen_history_v2";
 const LS_PROMPTS = "imagegen_prompts_v2";
 const LS_PROVIDER = "imagegen_provider";
 const LS_ENGINE = "imagegen_engine";
+const LS_GEMINI_ASPECT = "imagegen_gemini_aspect";
+const LS_GEMINI_QUALITY = "imagegen_gemini_quality";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
 const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
@@ -415,76 +400,8 @@ function savePrompts(prompts: string[]) {
   }
 }
 
-function formatTime(ts: number): string {
-  const diff = (Date.now() - ts) / 1000;
-  if (diff < 60) return "刚刚";
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`;
-  return `${Math.floor(diff / 86400)}天前`;
-}
 
-/* ── Shared button styles ── */
-const overlayBtnStyle: React.CSSProperties = {
-  padding: "5px 9px",
-  borderRadius: 7,
-  border: "none",
-  background: "rgba(0,0,0,0.52)",
-  color: "#fff",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  backdropFilter: "blur(8px)",
-  gap: 5,
-  fontSize: 12,
-};
-
-const actionBtnStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 7,
-  padding: "8px 16px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  background: "transparent",
-  color: "var(--text-secondary)",
-  cursor: "pointer",
-  fontSize: 13,
-  transition: "all 0.15s",
-};
-
-const lightboxBtnStyle: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 8,
-  border: "none",
-  background: "rgba(255,255,255,0.1)",
-  color: "#fff",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  backdropFilter: "blur(8px)",
-};
-
-const lightboxNavStyle: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  transform: "translateY(-50%)",
-  width: 48,
-  height: 48,
-  borderRadius: 12,
-  border: "none",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  backdropFilter: "blur(8px)",
-  zIndex: 10,
-  transition: "opacity 0.15s, background 0.15s",
-};
+/* ── (styles moved to globals.css: .overlay-btn, .lightbox-btn-action, .lightbox-nav, .action-btn) ── */
 
 /* ── Main Component ── */
 export default function HomePage() {
@@ -550,9 +467,9 @@ export default function HomePage() {
     if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
     const savedEngine = localStorage.getItem(LS_ENGINE);
     if (savedEngine === "openai" || (savedEngine === "gemini" && GEMINI_ENABLED)) setAiEngine(savedEngine);
-    const savedGeminiAspect = localStorage.getItem("imagegen_gemini_aspect");
+    const savedGeminiAspect = localStorage.getItem(LS_GEMINI_ASPECT);
     if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
-    const savedGeminiQuality = localStorage.getItem("imagegen_gemini_quality");
+    const savedGeminiQuality = localStorage.getItem(LS_GEMINI_QUALITY);
     if (savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
       setGeminiQuality(savedGeminiQuality);
     }
@@ -578,12 +495,12 @@ export default function HomePage() {
 
   /* Gemini aspect */
   useEffect(() => {
-    try { localStorage.setItem("imagegen_gemini_aspect", geminiAspect); } catch {}
+    try { localStorage.setItem(LS_GEMINI_ASPECT, geminiAspect); } catch {}
   }, [geminiAspect]);
 
   /* Gemini quality */
   useEffect(() => {
-    try { localStorage.setItem("imagegen_gemini_quality", geminiQuality); } catch {}
+    try { localStorage.setItem(LS_GEMINI_QUALITY, geminiQuality); } catch {}
   }, [geminiQuality]);
 
   /* Cleanup async UI work on unmount */
@@ -1092,14 +1009,13 @@ export default function HomePage() {
             </div>
           )}
           <CreditBadge />
-          <button
-            className="theme-btn ck-icon-btn"
+          <Button
+            variant="icon"
             onClick={() => setDark(d => !d)}
-            style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s" }}
             title={dark ? "切换亮色" : "切换暗色"}
           >
             <i className={dark ? "ri-sun-line" : "ri-moon-line"} style={{ fontSize: 16, lineHeight: 1 }} />
-          </button>
+          </Button>
           <UserButton
             appearance={userButtonAppearance}
             userProfileProps={{ appearance: userProfileAppearance }}
@@ -1174,33 +1090,24 @@ export default function HomePage() {
                   )}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, position: "relative", zIndex: 25 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPromptHistory(false);
-                      enhancePrompt();
-                    }}
-                    disabled={enhancing}
-                    className="action-btn"
-                    style={{ ...actionBtnStyle, justifyContent: "center", padding: "8px 10px", fontSize: 12, borderRadius: 10, opacity: enhancing ? 0.6 : 1, cursor: enhancing ? "not-allowed" : "pointer" }}
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setShowPromptHistory(false); enhancePrompt(); }}
+                    loading={enhancing}
+                    style={{ justifyContent: "center", padding: "8px 10px" }}
                   >
-                    {enhancing ? (
-                      <><i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} /> 增强中</>
-                    ) : (
-                      <><i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强</>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPromptHistory(false);
-                      referenceInputRef.current?.click();
-                    }}
-                    className="action-btn"
-                    style={{ ...actionBtnStyle, justifyContent: "center", padding: "8px 10px", fontSize: 12, borderRadius: 10 }}
+                    {enhancing
+                      ? <><Spinner size={14} /> 增强中</>
+                      : <><i className="ri-magic-line" style={{ fontSize: 14, lineHeight: 1 }} /> 增强</>
+                    }
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => { setShowPromptHistory(false); referenceInputRef.current?.click(); }}
+                    style={{ justifyContent: "center", padding: "8px 10px" }}
                   >
                     <i className="ri-image-add-line" style={{ fontSize: 14, lineHeight: 1 }} /> 参考图
-                  </button>
+                  </Button>
                   <input
                     ref={referenceInputRef}
                     type="file"
@@ -1310,94 +1217,28 @@ export default function HomePage() {
             </div>
 
             {/* History */}
-            {history.length > 0 && (
-              <div className="sidebar-section" style={sidebarSectionStyle}>
-                <button
-                  onClick={() => setShowHistory(h => !h)}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                >
-                  <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                    <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1, fontWeight: 400, color: "var(--text-secondary)" }} /> 历史 ({history.length})
-                  </span>
-                  <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
-                </button>
-
-                {showHistory && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {history.slice(0, 10).map(entry => (
-                      <div
-                        key={entry.id}
-                        className="history-item ck-data-row"
-                        style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
-                        onClick={() => restoreHistory(entry)}
-                        onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--border-focus)")}
-                        onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}
-                      >
-                        {entry.thumbnail && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={entry.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
-                        )}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>{entry.prompt}</p>
-                          <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                            {entry.versionLabel ? `${entry.versionLabel} · ` : ""}{formatTime(entry.timestamp)} · {entry.imageCount} 张{entry.referenceName ? " · 参考" : ""}
-                          </p>
-                        </div>
-                        <button
-                          className="delete-btn"
-                          onClick={e => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
-                          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3, flexShrink: 0 }}
-                        >
-                          <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
-                        </button>
-                      </div>
-                    ))}
-                    {history.length > 10 && (
-                      <p style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
-                        +{history.length - 10} 条更多
-                      </p>
-                    )}
-                    <button
-                      onClick={clearAllHistory}
-                      style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "3px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
-                    >
-                      <i className="ri-delete-bin-6-line" style={{ fontSize: 14, lineHeight: 1 }} /> 清空历史
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <HistoryPanel
+              history={history}
+              showHistory={showHistory}
+              onToggle={() => setShowHistory(h => !h)}
+              onRestore={restoreHistory}
+              onDelete={deleteHistoryEntry}
+              onClear={clearAllHistory}
+              sidebarSectionStyle={sidebarSectionStyle}
+            />
           </div>
 
           {/* Generate Button */}
           <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
-            <button
-              className="ck-primary-btn"
+            <Button
+              variant="primary"
+              className="generate-btn"
               onClick={handleGenerate}
               disabled={!prompt.trim() || loading}
-              style={{
-                width: "100%",
-                padding: "11px 0",
-                borderRadius: 8,
-                fontSize: 14,
-                fontWeight: 500,
-                border: "none",
-                cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
-                background: !prompt.trim() || loading ? "var(--surface-3)" : "var(--accent)",
-                color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                transition: "all 0.15s",
-                boxShadow: !prompt.trim() || loading
-                  ? "0px 0px 0px 1px var(--border-soft)"
-                  : "var(--mosaic-primary-shadow)",
-              }}
             >
               {loading ? (
                 <>
-                  <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                  <Spinner size={16} />
                   {`生成中${elapsed !== null ? ` · ${elapsed}s` : ""}`}
                 </>
               ) : (
@@ -1420,7 +1261,7 @@ export default function HomePage() {
                   </span>
                 </>
               )}
-            </button>
+            </Button>
             <p style={{ marginTop: 10, textAlign: "center", fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.08em", fontFamily: "var(--font-space)" }}>
               © QY.Studio · Design by QiaoYa
             </p>
@@ -1447,7 +1288,7 @@ export default function HomePage() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}>
               <div className="img-grid-loading" style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 620 : 400 }}>
                 {Array.from({ length: count }).map((_, i) => (
-                  <GeneratingPreviewCard
+                  <GeneratingCard
                     key={i}
                     aspect={displayAspect}
                     index={i}
@@ -1474,13 +1315,9 @@ export default function HomePage() {
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "28px 32px", borderRadius: 12, border: "1px solid var(--border-focus)", background: "var(--surface)", maxWidth: 360, textAlign: "center" }}>
               <i className="ri-error-warning-line" style={{ fontSize: 22, lineHeight: 1, color: "var(--text-secondary)" }} />
               <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.65 }}>{error}</p>
-              <button
-                className="action-btn"
-                onClick={handleGenerate}
-                style={{ ...actionBtnStyle, fontSize: 12, padding: "6px 16px" }}
-              >
+              <Button variant="secondary" onClick={handleGenerate} style={{ padding: "6px 16px" }}>
                 <i className="ri-refresh-line" style={{ fontSize: 14, lineHeight: 1 }} /> 重试
-              </button>
+              </Button>
             </div>
           )}
 
@@ -1513,18 +1350,18 @@ export default function HomePage() {
                       className="img-overlay"
                       style={{ position: "absolute", inset: 0, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", gap: 5, padding: 10, background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, transparent 50%)" }}
                     >
-                      <button onClick={e => { e.stopPropagation(); copyImageToClipboard(img, i); }} style={overlayBtnStyle} title="复制">
+                      <Button variant="overlay" onClick={e => { e.stopPropagation(); copyImageToClipboard(img, i); }} title="复制">
                         {copyingIdx === i
-                          ? <i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                          ? <Spinner size={14} />
                           : <i className="ri-file-copy-line" style={{ fontSize: 14, lineHeight: 1 }} />
                         }
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); handleDownload(img, i); }} style={overlayBtnStyle} title="下载">
+                      </Button>
+                      <Button variant="overlay" onClick={e => { e.stopPropagation(); handleDownload(img, i); }} title="下载">
                         <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} />
-                      </button>
-                      <button onClick={e => { e.stopPropagation(); setLightboxIdx(i); }} style={overlayBtnStyle} title="放大">
+                      </Button>
+                      <Button variant="overlay" onClick={e => { e.stopPropagation(); setLightboxIdx(i); }} title="放大">
                         <i className="ri-zoom-in-line" style={{ fontSize: 14, lineHeight: 1 }} />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   );
@@ -1534,27 +1371,27 @@ export default function HomePage() {
               {/* Action bar */}
               <div className="img-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {images.length > 1 && (
-                  <button className="action-btn" onClick={downloadAll} style={actionBtnStyle}>
+                  <Button variant="secondary" onClick={downloadAll}>
                     <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载全部
-                  </button>
+                  </Button>
                 )}
                 {images.length === 1 && (
-                  <button className="action-btn" onClick={() => handleDownload(images[0], 0)} style={actionBtnStyle}>
+                  <Button variant="secondary" onClick={() => handleDownload(images[0], 0)}>
                     <i className="ri-download-2-line" style={{ fontSize: 14, lineHeight: 1 }} /> 下载 JPEG
-                  </button>
+                  </Button>
                 )}
                 {images.length === 1 && (
-                  <button className="action-btn" onClick={() => copyImageToClipboard(images[0], 0)} style={actionBtnStyle}>
+                  <Button variant="secondary" onClick={() => copyImageToClipboard(images[0], 0)}>
                     {copyingIdx === 0
-                      ? <i className="ri-loader-4-line" style={{ fontSize: 14, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                      ? <Spinner size={14} />
                       : <i className="ri-file-copy-line" style={{ fontSize: 14, lineHeight: 1 }} />
                     }
                     复制图片
-                  </button>
+                  </Button>
                 )}
-                <button className="action-btn" onClick={handleGenerate} style={actionBtnStyle}>
+                <Button variant="secondary" onClick={handleGenerate}>
                   <i className="ri-refresh-line" style={{ fontSize: 14, lineHeight: 1 }} /> 重新生成
-                </button>
+                </Button>
               </div>
 
               {versions.length > 0 && (
@@ -1674,7 +1511,7 @@ export default function HomePage() {
             title="AI 增强提示词"
           >
             {enhancing
-              ? <i className="ri-loader-4-line" style={{ fontSize: 18, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+              ? <Spinner size={18} />
               : <i className="ri-magic-line" style={{ fontSize: 18, lineHeight: 1 }} />
             }
           </button>
@@ -1701,33 +1538,15 @@ export default function HomePage() {
           {/* 弹簧 */}
           <span style={{ flex: 1 }} />
           {/* 发送按钮 */}
-          <button
-            className="ck-primary-btn"
+          <Button
+            variant="primary"
+            className="generate-btn--mobile"
             onClick={handleGenerate}
             disabled={!prompt.trim() || loading}
-            style={{
-              padding: "8px 18px",
-              borderRadius: 12,
-              border: "none",
-              background: !prompt.trim() || loading ? "var(--mosaic-control-hover)" : "var(--accent)",
-              color: !prompt.trim() || loading ? "var(--text-muted)" : "var(--btn-text)",
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: !prompt.trim() || loading ? "not-allowed" : "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              transition: "all 0.15s",
-              flexShrink: 0,
-              letterSpacing: "-0.01em",
-              boxShadow: !prompt.trim() || loading
-                ? "none"
-                : "var(--mosaic-primary-shadow)",
-            }}
           >
             {loading ? (
               <>
-                <i className="ri-loader-4-line" style={{ fontSize: 15, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
+                <Spinner size={15} />
                 {elapsed !== null && <span style={{ fontFamily: "var(--font-space)", fontSize: 12 }}>{elapsed}s</span>}
               </>
             ) : (
@@ -1736,7 +1555,7 @@ export default function HomePage() {
                 生成
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1931,59 +1750,15 @@ export default function HomePage() {
 
       {/* ── Lightbox ── */}
       {lightboxIdx !== null && images[lightboxIdx] && (
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(14px)", animation: "fadeIn 0.15s ease" }}
-          onClick={() => setLightboxIdx(null)}
-        >
-          {imageSrc(images[lightboxIdx]) ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageSrc(images[lightboxIdx])}
-              alt="大图预览"
-              style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
-              onClick={e => e.stopPropagation()}
-            />
-          ) : null}
-
-          {/* Prev / Next */}
-          {images.length > 1 && (
-            <>
-              <button
-                onClick={e => { e.stopPropagation(); setLightboxIdx(i => i !== null ? Math.max(0, i - 1) : null); }}
-                disabled={lightboxIdx === 0}
-                style={{ ...lightboxNavStyle, left: 20, opacity: lightboxIdx === 0 ? 0.25 : 1 }}
-              >
-                <i className="ri-arrow-left-s-line" style={{ fontSize: 24, lineHeight: 1 }} />
-              </button>
-              <button
-                onClick={e => { e.stopPropagation(); setLightboxIdx(i => i !== null ? Math.min(images.length - 1, i + 1) : null); }}
-                disabled={lightboxIdx === images.length - 1}
-                style={{ ...lightboxNavStyle, right: 20, opacity: lightboxIdx === images.length - 1 ? 0.25 : 1 }}
-              >
-                <i className="ri-arrow-right-s-line" style={{ fontSize: 24, lineHeight: 1 }} />
-              </button>
-              <div style={{ position: "absolute", bottom: 22, left: "50%", transform: "translateX(-50%)", fontSize: 13, color: "rgba(255,255,255,0.45)", fontFamily: "var(--font-space)", letterSpacing: "0.05em" }}>
-                {lightboxIdx + 1} / {images.length}
-              </div>
-            </>
-          )}
-
-          {/* Top-right actions */}
-          <div style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 7 }}>
-            <button onClick={e => { e.stopPropagation(); copyImageToClipboard(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="复制">
-              {copyingIdx === lightboxIdx
-                ? <i className="ri-loader-4-line" style={{ fontSize: 16, lineHeight: 1, animation: "spin 1s linear infinite", display: "inline-block" }} />
-                : <i className="ri-file-copy-line" style={{ fontSize: 16, lineHeight: 1 }} />
-              }
-            </button>
-            <button onClick={e => { e.stopPropagation(); handleDownload(images[lightboxIdx], lightboxIdx); }} style={lightboxBtnStyle} title="下载">
-              <i className="ri-download-2-line" style={{ fontSize: 16, lineHeight: 1 }} />
-            </button>
-            <button onClick={() => setLightboxIdx(null)} style={lightboxBtnStyle} title="关闭 (ESC)">
-              <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
-            </button>
-          </div>
-        </div>
+        <Lightbox
+          images={images}
+          index={lightboxIdx}
+          copyingIdx={copyingIdx}
+          onClose={() => setLightboxIdx(null)}
+          onNavigate={setLightboxIdx}
+          onCopy={copyImageToClipboard}
+          onDownload={handleDownload}
+        />
       )}
 
       {/* ── Toast ── */}
@@ -2069,136 +1844,4 @@ function SideLabel({ children, icon }: { children: React.ReactNode; icon?: strin
       {children}
     </span>
   );
-}
-
-function GeneratingPreviewCard({
-  aspect,
-  index,
-  elapsed,
-  dark,
-}: {
-  aspect: string;
-  index: number;
-  elapsed: number | null;
-  dark: boolean;
-}) {
-  return (
-    <div
-      className="generating-card"
-      aria-label={`正在生成图片${elapsed !== null ? `，已等待 ${elapsed} 秒` : ""}`}
-      style={{
-        aspectRatio: aspect,
-        "--preview-delay": `${index * 0.18}s`,
-      } as React.CSSProperties}
-    >
-      <FlickeringGrid
-        color={dark ? "255,255,255" : "58,52,44"}
-        flickerChance={dark ? 0.08 : 0.06}
-        gridGap={8}
-        maxOpacity={dark ? 0.1 : 0.078}
-        squareSize={5}
-      />
-      <div className="generating-card__label">
-        正在创建图像......
-      </div>
-    </div>
-  );
-}
-
-function FlickeringGrid({
-  color,
-  flickerChance,
-  gridGap,
-  maxOpacity,
-  squareSize,
-}: {
-  color: string;
-  flickerChance: number;
-  gridGap: number;
-  maxOpacity: number;
-  squareSize: number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-
-    let animationFrameId = 0;
-    let width = 0;
-    let height = 0;
-    let columns = 0;
-    let rows = 0;
-    let opacities: number[] = [];
-    const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let reduceMotion = reduceMotionQuery.matches;
-
-    const initializeGrid = () => {
-      const rect = parent.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      width = Math.max(1, Math.floor(rect.width + 24));
-      height = Math.max(1, Math.floor(rect.height + 24));
-      columns = Math.ceil(width / (squareSize + gridGap));
-      rows = Math.ceil(height / (squareSize + gridGap));
-      opacities = Array.from({ length: columns * rows }, () => Math.random() * maxOpacity);
-
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    };
-
-    const drawGrid = () => {
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      ctx.clearRect(0, 0, width, height);
-
-      for (let row = 0; row < rows; row += 1) {
-        for (let col = 0; col < columns; col += 1) {
-          const index = row * columns + col;
-          if (!reduceMotion && Math.random() < flickerChance) {
-            opacities[index] = Math.random() * maxOpacity;
-          }
-
-          const x = col * (squareSize + gridGap) - 12;
-          const y = row * (squareSize + gridGap) - 12;
-          ctx.fillStyle = `rgba(${color}, ${opacities[index]})`;
-          ctx.fillRect(x, y, squareSize, squareSize);
-        }
-      }
-
-      if (!reduceMotion) {
-        animationFrameId = window.requestAnimationFrame(drawGrid);
-      }
-    };
-
-    const resizeObserver = new ResizeObserver(() => {
-      window.cancelAnimationFrame(animationFrameId);
-      initializeGrid();
-      drawGrid();
-    });
-    const handleReduceMotionChange = (event: MediaQueryListEvent) => {
-      reduceMotion = event.matches;
-      window.cancelAnimationFrame(animationFrameId);
-      drawGrid();
-    };
-
-    initializeGrid();
-    drawGrid();
-    resizeObserver.observe(parent);
-    reduceMotionQuery.addEventListener("change", handleReduceMotionChange);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrameId);
-      resizeObserver.disconnect();
-      reduceMotionQuery.removeEventListener("change", handleReduceMotionChange);
-    };
-  }, [color, flickerChance, gridGap, maxOpacity, squareSize]);
-
-  return <canvas className="flickering-grid" ref={canvasRef} aria-hidden="true" />;
 }

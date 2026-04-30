@@ -386,25 +386,19 @@ function buildReferenceChatPrompt(prompt: string, size: string, quality: string)
   ].join("\n");
 }
 
-// 单次请求，兼容不支持 n>1 的中转服务
-async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
+async function fetchUpstream(
+  url: string,
+  init: Omit<RequestInit, "signal">,
+  timeoutLabel: string
+): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-
   let response: Response;
   try {
-    response = await fetch(config.apiEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    response = await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("图像生成请求超时，请稍后重试");
+      throw new Error(`${timeoutLabel}超时，请稍后重试`);
     }
     throw err;
   } finally {
@@ -412,7 +406,6 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
   }
 
   const rawText = await response.text();
-
   if (!response.ok) {
     let message = `API 错误 ${response.status}`;
     try {
@@ -421,7 +414,20 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
     } catch {}
     throw new Error(message);
   }
+  return rawText;
+}
 
+// 单次请求，兼容不支持 n>1 的中转服务
+async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
+  const rawText = await fetchUpstream(
+    config.apiEndpoint,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify(body),
+    },
+    "图像生成请求"
+  );
   return parseImageResponse(rawText);
 }
 
@@ -436,8 +442,6 @@ async function editOneViaGenerationsEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   const body: Record<string, unknown> = {
     model: config.referenceModel,
     prompt,
@@ -449,37 +453,15 @@ async function editOneViaGenerationsEndpoint(
   const resolvedQuality = getReferenceQuality(config, quality);
   if (resolvedQuality) body.quality = resolvedQuality;
 
-  let response: Response;
-  try {
-    response = await fetch(config.referenceEndpoint, {
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("参考图生成请求超时，请稍后重试");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  const rawText = await response.text();
-
-  if (!response.ok) {
-    let message = `API 错误 ${response.status}`;
-    try {
-      const errJson = JSON.parse(rawText);
-      message = errJson.error?.message ?? errJson.message ?? message;
-    } catch {}
-    throw new Error(message);
-  }
-
+    },
+    "参考图生成请求"
+  );
   return parseImageResponse(rawText);
 }
 
@@ -494,8 +476,6 @@ async function editOneViaImagesEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   const bytes = Buffer.from(referenceImage.data!, "base64");
   const extension = getExtension(referenceImage.mediaType!);
   const safeBaseName = referenceImage.name!.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 80) || "reference-image";
@@ -509,36 +489,15 @@ async function editOneViaImagesEndpoint(
   appendIfDefined(formData, "response_format", "b64_json");
   formData.append(config.referenceImageField, file);
 
-  let response: Response;
-  try {
-    response = await fetch(config.referenceEndpoint, {
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${config.apiKey}` },
       body: formData,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("参考图生成请求超时，请稍后重试");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  const rawText = await response.text();
-
-  if (!response.ok) {
-    let message = `API 错误 ${response.status}`;
-    try {
-      const errJson = JSON.parse(rawText);
-      message = errJson.error?.message ?? errJson.message ?? message;
-    } catch {}
-    throw new Error(message);
-  }
-
+    },
+    "参考图生成请求"
+  );
   return parseImageResponse(rawText);
 }
 
@@ -553,17 +512,11 @@ async function editOneViaChatEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-
-  let response: Response;
-  try {
-    response = await fetch(config.referenceEndpoint, {
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({
         model: config.referenceModel,
         messages: [
@@ -577,28 +530,9 @@ async function editOneViaChatEndpoint(
         ],
         max_tokens: 4096,
       }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("参考图生成请求超时，请稍后重试");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  const rawText = await response.text();
-
-  if (!response.ok) {
-    let message = `API 错误 ${response.status}`;
-    try {
-      const errJson = JSON.parse(rawText);
-      message = errJson.error?.message ?? errJson.message ?? message;
-    } catch {}
-    throw new Error(message);
-  }
-
+    },
+    "参考图生成请求"
+  );
   return parseChatImageResponse(rawText);
 }
 
