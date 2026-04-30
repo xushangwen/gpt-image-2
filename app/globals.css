@@ -58,10 +58,9 @@
   --sidebar-section-border: rgba(255,255,255,0.06);
   --sidebar-section-shadow:
     inset 0 1px 0 rgba(255,255,255,0.028),
-    0 0 0 1px rgba(0,0,0,0.34),
-    0 1px 2px rgba(0,0,0,0.16),
-    0 8px 24px rgba(0,0,0,0.22),
-    0 18px 40px rgba(0,0,0,0.12);
+    0 0 0 1px rgba(0,0,0,0.28),
+    0 1px 3px rgba(0,0,0,0.10),
+    0 4px 10px rgba(0,0,0,0.08);
 }
 
 /* ── 亮色主题 ── */
@@ -1391,6 +1390,33 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
   .header-qs-label,
   .header-badge,
   .gen-btn-hint {
+    display: none !important;
+  }
+
+  /* 手机端 header 紧凑化 */
+  .ck-app-header {
+    padding: 0 12px !important;
+    gap: 0 !important;
+  }
+
+  /* header 左侧：logo + 文字，收紧间距 */
+  .ck-app-header > div:first-child {
+    gap: 7px !important;
+    flex-shrink: 0;
+  }
+
+  /* header 右侧：收紧间距 */
+  .ck-app-header > div:last-child {
+    gap: 6px !important;
+  }
+
+  /* 线路选择器在手机端隐藏（设置面板内可操作） */
+  .header-provider-seg {
+    display: none !important;
+  }
+
+  /* 单引擎模式（Gemini 未启用）：手机端直接隐藏引擎切换器，意义不大 */
+  .header-engine-single {
     display: none !important;
   }
 

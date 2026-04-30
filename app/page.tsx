@@ -1026,7 +1026,7 @@ export default function HomePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* AI 引擎切换 */}
-          <div className="ck-segmented ck-segmented--header" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
+          <div className={`ck-segmented ck-segmented--header header-engine-seg${!GEMINI_ENABLED ? " header-engine-single" : ""}`} style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
             {(GEMINI_ENABLED ? ["openai", "gemini"] as const : ["openai"] as const).map((eng, i) => {
               const active = aiEngine === eng;
               return (
@@ -1061,7 +1061,7 @@ export default function HomePage() {
           </div>
           {/* 线路切换（仅 OpenAI 模式可见） */}
           {aiEngine === "openai" && (
-            <div className="ck-segmented ck-segmented--header" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
+            <div className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
               {(["tuzi", "bltcy"] as const).map((p) => {
                 const active = provider === p;
                 return (
@@ -1826,6 +1826,23 @@ export default function HomePage() {
               </>
             )}
           </div>
+
+          {/* 线路切换（仅 OpenAI 模式） */}
+          {aiEngine === "openai" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <SideLabel icon="ri-route-line">线路</SideLabel>
+              <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
+                {(["tuzi", "bltcy"] as const).map((p, i) => {
+                  const active = provider === p;
+                  return (
+                    <button key={p} data-active={active} onClick={() => setProvider(p)} title={PROVIDER_LABELS[p].desc} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                      <span style={{ color: active ? "#fff" : "currentColor" }}>{PROVIDER_LABELS[p].name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Quality */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
