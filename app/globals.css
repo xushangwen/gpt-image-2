@@ -1211,21 +1211,37 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
 .cl-signUp-start .cl-footer > div:last-child a[aria-label="Clerk logo"] svg {
   display: block !important;
 }
-/* OTP / 验证码输入框文字颜色 */
+/* OTP / 验证码输入框 */
 .cl-otpCodeFieldInput,
 .cl-otpCodeField input,
-.cl-otpCodeFieldInput__input,
-[data-localization-key*="otp"] input {
+.cl-otpCodeFieldInput__input {
   color: var(--text-primary) !important;
   -webkit-text-fill-color: var(--text-primary) !important;
   caret-color: var(--accent) !important;
   background: var(--mosaic-control-bg) !important;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.16) !important;
+  border-radius: 6px !important;
 }
 .cl-otpCodeFieldInput::placeholder,
-.cl-otpCodeField input::placeholder,
-.cl-otpCodeFieldInput__input::placeholder {
+.cl-otpCodeField input::placeholder {
   color: var(--text-muted) !important;
   -webkit-text-fill-color: var(--text-muted) !important;
+}
+/* OTP 聚焦：用橙色紧贴环，不用 3px 大光晕防格间溢出 */
+.cl-otpCodeFieldInput:focus {
+  box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4px rgba(253,114,36,0.18) !important;
+  outline: none !important;
+}
+/* OTP 成功态：覆盖 Clerk 默认绿色 → 品牌橙色 */
+.cl-signIn-root .cl-otpCodeField,
+.cl-signUp-root .cl-otpCodeField {
+  --cl-color-success: var(--accent) !important;
+}
+.cl-otpCodeFieldSuccessIcon,
+.cl-otpCodeField [class*="success" i] svg,
+.cl-otpCodeField [class*="Success"] svg {
+  color: var(--accent) !important;
+  fill: var(--accent) !important;
 }
 
 .cl-signIn-root .cl-formButtonPrimary,

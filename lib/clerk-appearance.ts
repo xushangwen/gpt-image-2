@@ -196,6 +196,8 @@ export const signInAppearance = {
       WebkitTextFillColor: clerkMosaic.color.text,
       caretColor: clerkMosaic.color.accent,
       background: "#33333e",
+      boxShadow: `0 0 0 1.5px rgba(255,255,255,0.16)`,
+      borderRadius: clerkMosaic.radius.control,
     },
   },
 } satisfies ClerkAppearance;
