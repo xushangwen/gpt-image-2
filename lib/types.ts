@@ -1,5 +1,5 @@
 export type AspectRatio = "auto" | "1:1" | "3:2" | "2:3";
-export type Quality = "low" | "medium" | "high";
+export type Quality = "auto" | "low" | "medium" | "high";
 export type ProviderChoice = "tuzi" | "bltcy";
 export type AIEngine = "openai" | "gemini";
 export type ImageResult = { b64?: string; url?: string; mediaType: string };

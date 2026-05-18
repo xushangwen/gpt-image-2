@@ -8,7 +8,7 @@ export const preferredRegion = "iad1";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const UPSTREAM_TIMEOUT_MS = 180_000;
-const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
+const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
@@ -25,6 +25,7 @@ function getModel(): string {
 
 // quality → Gemini imageSize
 const QUALITY_TO_IMAGE_SIZE: Record<string, string> = {
+  auto:   "2K",   // 等同中等，与 OpenAI 引擎 auto 体感对齐
   low:    "1K",
   medium: "2K",
   high:   "4K",

@@ -33,16 +33,19 @@ const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: s
   { label: "竖版", value: "2:3",   size: "1024x1536", icon: "ri-rectangle-line", rotate: 90 },
 ];
 
-const QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
-  { label: "低", value: "low",    icon: "ri-signal-wifi-1-fill" },
-  { label: "中", value: "medium", icon: "ri-signal-wifi-2-fill" },
-  { label: "高", value: "high",   icon: "ri-signal-wifi-3-fill" },
+// eta = 经验值，给用户心理预期；OpenAI gpt-image-2 + tuzi 中转 + 国内下行综合
+const QUALITY_OPTIONS: { label: string; value: Quality; icon: string; eta: string }[] = [
+  { label: "自动", value: "auto",   icon: "ri-sparkling-2-line",  eta: "~70s" },
+  { label: "低",   value: "low",    icon: "ri-signal-wifi-1-fill", eta: "~50s" },
+  { label: "中",   value: "medium", icon: "ri-signal-wifi-2-fill", eta: "~70s" },
+  { label: "高",   value: "high",   icon: "ri-signal-wifi-3-fill", eta: "~120s" },
 ];
 
-const GEMINI_QUALITY_OPTIONS: { label: string; value: Quality; icon: string }[] = [
-  { label: "1K", value: "low",    icon: "ri-signal-wifi-1-fill" },
-  { label: "2K", value: "medium", icon: "ri-signal-wifi-2-fill" },
-  { label: "4K", value: "high",   icon: "ri-signal-wifi-3-fill" },
+const GEMINI_QUALITY_OPTIONS: { label: string; value: Quality; icon: string; eta: string }[] = [
+  { label: "自动", value: "auto",   icon: "ri-sparkling-2-line",  eta: "~40s" },
+  { label: "1K",   value: "low",    icon: "ri-signal-wifi-1-fill", eta: "~30s" },
+  { label: "2K",   value: "medium", icon: "ri-signal-wifi-2-fill", eta: "~40s" },
+  { label: "4K",   value: "high",   icon: "ri-signal-wifi-3-fill", eta: "~60s" },
 ];
 
 // 14 aspect ratios supported by gemini-3.1-flash-image-preview
@@ -407,7 +410,7 @@ function savePrompts(prompts: string[]) {
 export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const [aspect, setAspect] = useState<AspectRatio>("auto");
-  const [quality, setQuality] = useState<Quality>("high");
+  const [quality, setQuality] = useState<Quality>("auto");
   const [count, setCount] = useState(1);
   const [dark, setDark] = useState(true);
   const [provider, setProvider] = useState<ProviderChoice>("tuzi");
@@ -430,7 +433,7 @@ export default function HomePage() {
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<string>("1 / 1");
   const [geminiAspect, setGeminiAspect] = useState<string>("16:9");
-  const [geminiQuality, setGeminiQuality] = useState<Quality>("medium");
+  const [geminiQuality, setGeminiQuality] = useState<Quality>("auto");
   const [enhancing, setEnhancing] = useState(false);
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -470,7 +473,7 @@ export default function HomePage() {
     const savedGeminiAspect = localStorage.getItem(LS_GEMINI_ASPECT);
     if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
     const savedGeminiQuality = localStorage.getItem(LS_GEMINI_QUALITY);
-    if (savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
+    if (savedGeminiQuality === "auto" || savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
       setGeminiQuality(savedGeminiQuality);
     }
     // Load full image history from IndexedDB
@@ -1219,15 +1222,27 @@ export default function HomePage() {
 
             {/* Quality */}
             <div className="sidebar-section" style={sidebarSectionStyle}>
-              <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.02em" }}>
+                  预计 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS)
+                    .find(o => o.value === (aiEngine === "gemini" ? geminiQuality : quality))?.eta}
+                </span>
+              </div>
               <div className="ck-segmented" style={{ display: "flex", borderRadius: 10, overflow: "hidden", boxShadow: "var(--mosaic-button-shadow)" }}>
                 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
                   (() => {
                     const active = aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value;
                     return (
-                      <button key={opt.value} data-active={active} onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
-                        <span style={{ color: active ? "#fff" : "currentColor" }}>{opt.label}</span>
+                      <button
+                        key={opt.value}
+                        data-active={active}
+                        title={`${opt.label} · 预计 ${opt.eta}`}
+                        onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)}
+                        style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "7px 4px" }}
+                      >
+                        <i className={opt.icon} style={{ fontSize: 13, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
+                        <span style={{ color: active ? "#fff" : "currentColor", fontSize: 12 }}>{opt.label}</span>
                       </button>
                     );
                   })()
@@ -1735,15 +1750,27 @@ export default function HomePage() {
 
           {/* Quality */}
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <SideLabel icon="ri-hd-line">{aiEngine === "gemini" ? "分辨率" : "画质"}</SideLabel>
+              <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                预计 {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS)
+                  .find(o => o.value === (aiEngine === "gemini" ? geminiQuality : quality))?.eta}
+              </span>
+            </div>
             <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
               {(aiEngine === "gemini" ? GEMINI_QUALITY_OPTIONS : QUALITY_OPTIONS).map((opt, i) => (
                 (() => {
-                  const active = quality === opt.value;
+                  const active = aiEngine === "gemini" ? geminiQuality === opt.value : quality === opt.value;
                   return (
-                    <button key={opt.value} data-active={active} onClick={() => setQuality(opt.value)} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                      <i className={opt.icon} style={{ fontSize: 14, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
-                      <span style={{ color: active ? "#fff" : "currentColor" }}>{opt.label}</span>
+                    <button
+                      key={opt.value}
+                      data-active={active}
+                      title={`${opt.label} · 预计 ${opt.eta}`}
+                      onClick={() => aiEngine === "gemini" ? setGeminiQuality(opt.value as Quality) : setQuality(opt.value as Quality)}
+                      style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 3, padding: "7px 4px" }}
+                    >
+                      <i className={opt.icon} style={{ fontSize: 13, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
+                      <span style={{ color: active ? "#fff" : "currentColor", fontSize: 12 }}>{opt.label}</span>
                     </button>
                   );
                 })()

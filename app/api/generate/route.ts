@@ -53,7 +53,7 @@ const PROVIDER_PRESETS: Record<Exclude<ProviderName, "custom">, {
 };
 
 const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
-const ALLOWED_QUALITIES = new Set(["low", "medium", "high"]);
+const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
 const SIZE_TO_RATIO: Record<string, string> = {
   "1024x1024": "1:1",
   "1536x1024": "3:2",
