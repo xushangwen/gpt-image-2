@@ -443,7 +443,8 @@ export default function HomePage() {
   const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
   const [showPromptHistory, setShowPromptHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(true); // 默认展开，localStorage 有「显式收起」记录的用户保持原选
-  const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
+  const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([]);
+  const MAX_REFERENCE_IMAGES = 4;
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
   const [displayAspect, setDisplayAspect] = useState<string>("1 / 1");
@@ -577,40 +578,58 @@ export default function HomePage() {
   const selectedAspect = ASPECT_OPTIONS.find(o => o.value === aspect)!;
 
   const smartInference = useMemo(
-    () => aspect === "auto" ? inferSmartAspect(prompt, referenceImage) : null,
-    [aspect, prompt, referenceImage]
+    () => aspect === "auto" ? inferSmartAspect(prompt, referenceImages[0] ?? null) : null,
+    [aspect, prompt, referenceImages]
   );
 
-  const handleReferenceUpload = useCallback(async (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      showToast("请选择图片文件", "error");
-      return;
-    }
-    if (file.size > MAX_REFERENCE_SIZE) {
-      showToast("参考图不能超过 20 MB", "error");
+  const handleReferenceUpload = useCallback(async (files: FileList | File[] | undefined) => {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
+    const currentCount = referenceImages.length;
+    const room = MAX_REFERENCE_IMAGES - currentCount;
+    if (room <= 0) {
+      showToast(`最多 ${MAX_REFERENCE_IMAGES} 张参考图`, "warning");
       return;
     }
 
-    try {
-      const compressed = await compressForStorage(file);
-      const thumbnail = await createThumbnail(compressed.dataUrl, 320);
-      setReferenceImage({
-        name: file.name,
-        dataUrl: compressed.dataUrl,
-        thumbnail: thumbnail || compressed.dataUrl,
-        mediaType: compressed.mediaType,
-        size: compressed.size,
-        width: compressed.width,
-        height: compressed.height,
-      });
-      showToast(`参考图已加入 · ${compressed.width}×${compressed.height}`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "参考图读取失败", "error");
-    } finally {
-      if (referenceInputRef.current) referenceInputRef.current.value = "";
+    const accepted: ReferenceImage[] = [];
+    for (const file of list.slice(0, room)) {
+      if (!file.type.startsWith("image/")) {
+        showToast("请选择图片文件", "error");
+        continue;
+      }
+      if (file.size > MAX_REFERENCE_SIZE) {
+        showToast(`${file.name} 超过 20 MB，已跳过`, "error");
+        continue;
+      }
+      try {
+        const compressed = await compressForStorage(file);
+        const thumbnail = await createThumbnail(compressed.dataUrl, 320);
+        accepted.push({
+          name: file.name,
+          dataUrl: compressed.dataUrl,
+          thumbnail: thumbnail || compressed.dataUrl,
+          mediaType: compressed.mediaType,
+          size: compressed.size,
+          width: compressed.width,
+          height: compressed.height,
+        });
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : `${file.name} 读取失败`, "error");
+      }
     }
-  }, [showToast]);
+
+    if (accepted.length > 0) {
+      setReferenceImages(prev => [...prev, ...accepted].slice(0, MAX_REFERENCE_IMAGES));
+      const skipped = list.length > room ? `，超出 ${list.length - room} 张已忽略` : "";
+      showToast(`已加入 ${accepted.length} 张参考图${skipped}`);
+    }
+    if (referenceInputRef.current) referenceInputRef.current.value = "";
+  }, [referenceImages.length, showToast]);
+
+  const removeReferenceImage = useCallback((index: number) => {
+    setReferenceImages(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -624,8 +643,7 @@ export default function HomePage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) void handleReferenceUpload(file);
+    if (e.dataTransfer.files.length > 0) void handleReferenceUpload(e.dataTransfer.files);
   }, [handleReferenceUpload]);
 
   const enhancePrompt = useCallback(async () => {
@@ -645,8 +663,9 @@ export default function HomePage() {
           aspect,
           quality,
           provider,
-          referenceImage: referenceImage
-            ? { data: dataUrlToBase64(referenceImage.thumbnail), mediaType: "image/jpeg" }
+          // 增强仅用第一张参考图即可（用作风格上下文）
+          referenceImage: referenceImages[0]
+            ? { data: dataUrlToBase64(referenceImages[0].thumbnail), mediaType: "image/jpeg" }
             : undefined,
         }),
       });
@@ -659,7 +678,7 @@ export default function HomePage() {
     } finally {
       setEnhancing(false);
     }
-  }, [prompt, referenceImage, aspect, quality, enhancing, provider, showToast]);
+  }, [prompt, referenceImages, aspect, quality, enhancing, provider, showToast]);
 
   const handleGenerate = useCallback(async () => {
     // 同步门闩：在 setLoading(true) 真正生效之前的几毫秒窗口，
@@ -692,16 +711,21 @@ export default function HomePage() {
     timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
 
     try {
-      const apiRefImage = referenceImage ? await compressReferenceForApi(referenceImage) : undefined;
+      const apiRefImages = await Promise.all(
+        referenceImages.map(async (ref) => {
+          const compressed = await compressReferenceForApi(ref);
+          return { data: compressed.data, mediaType: compressed.mediaType, name: ref.name };
+        })
+      );
       const apiPath = aiEngine === "gemini" ? "/api/gemini/generate" : "/api/generate";
       const bodyPayload: Record<string, unknown> = {
         prompt: prompt.trim(),
         size: aiEngine === "gemini" ? "1024x1024" : effectiveSize,
         quality: aiEngine === "gemini" ? geminiQuality : quality,
         n: count,
-        referenceImage: apiRefImage
-          ? { data: apiRefImage.data, mediaType: apiRefImage.mediaType, name: referenceImage!.name }
-          : undefined,
+        // 新版数组形式；旧字段保留兼容 Gemini 路由（暂未升级多图）
+        referenceImages: apiRefImages.length > 0 ? apiRefImages : undefined,
+        referenceImage: apiRefImages[0],
       };
       if (aiEngine === "openai") bodyPayload.provider = provider;
       if (aiEngine === "gemini") bodyPayload.aspectRatio = geminiAspect;
@@ -749,14 +773,16 @@ export default function HomePage() {
         timestamp: Date.now(),
         thumbnail,
         imageCount: newImages.length,
-        referenceName: referenceImage?.name,
+        referenceName: referenceImages.length > 0
+          ? (referenceImages.length === 1 ? referenceImages[0].name : `${referenceImages.length} 张参考图`)
+          : undefined,
         versionLabel: `V${versionCounterRef.current}`,
         engine: aiEngine,
       };
       const versionEntry: VersionEntry = {
         ...entry,
         images: newImages,
-        referenceThumbnail: referenceImage?.thumbnail,
+        referenceThumbnail: referenceImages[0]?.thumbnail,
       };
       setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
@@ -787,7 +813,7 @@ export default function HomePage() {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       generatingRef.current = false;
     }
-  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
+  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
   useEffect(() => {
@@ -1213,32 +1239,97 @@ export default function HomePage() {
                     ref={referenceInputRef}
                     type="file"
                     accept="image/*"
-                    onChange={e => handleReferenceUpload(e.target.files?.[0])}
+                    multiple
+                    onChange={e => handleReferenceUpload(e.target.files ?? undefined)}
                     style={{ display: "none" }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Reference image */}
-            {referenceImage && (
+            {/* Reference images (多张参考图) */}
+            {referenceImages.length > 0 && (
               <div className="sidebar-section" style={sidebarSectionStyle}>
-                <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
-                <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
-                  <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
-                    <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{referenceImage.name}</p>
-                    <p style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{formatFileSize(referenceImage.size)}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setReferenceImage(null)}
-                    title="移除参考图"
-                    style={{ alignSelf: "center", width: 26, height: 26, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <i className="ri-close-line" style={{ fontSize: 15, lineHeight: 1 }} />
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                    {referenceImages.length} / {MAX_REFERENCE_IMAGES}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                  {referenceImages.map((ref, idx) => (
+                    <div
+                      key={`${ref.name}-${idx}`}
+                      style={{
+                        position: "relative",
+                        aspectRatio: "1 / 1",
+                        borderRadius: 7,
+                        overflow: "hidden",
+                        border: "1px solid var(--border)",
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={ref.thumbnail}
+                        alt={ref.name}
+                        title={`${ref.name} · ${formatFileSize(ref.size)}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeReferenceImage(idx)}
+                        aria-label="移除"
+                        title="移除该参考图"
+                        style={{
+                          position: "absolute",
+                          top: 3,
+                          right: 3,
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          border: "none",
+                          background: "rgba(0,0,0,0.65)",
+                          color: "#fff",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <i className="ri-close-line" style={{ fontSize: 12, lineHeight: 1 }} />
+                      </button>
+                    </div>
+                  ))}
+                  {referenceImages.length < MAX_REFERENCE_IMAGES && (
+                    <button
+                      type="button"
+                      onClick={() => referenceInputRef.current?.click()}
+                      title="添加更多参考图"
+                      style={{
+                        aspectRatio: "1 / 1",
+                        borderRadius: 7,
+                        border: "1.5px dashed var(--border)",
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.15s",
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = "var(--accent)";
+                        e.currentTarget.style.color = "var(--accent)";
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = "var(--border)";
+                        e.currentTarget.style.color = "var(--text-muted)";
+                      }}
+                    >
+                      <i className="ri-add-line" style={{ fontSize: 20, lineHeight: 1 }} />
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -1252,7 +1343,7 @@ export default function HomePage() {
                 ) : (
                   <>
                     {aspect === "auto" && smartInference && (() => {
-                      const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                      const isDefault = smartInference.aspect === "1:1" && referenceImages.length === 0 && !prompt.trim();
                       return !isDefault ? (
                         <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
                           → {smartInference.label}
@@ -1374,7 +1465,7 @@ export default function HomePage() {
             }}>
               <i className="ri-information-line" style={{ fontSize: 13, color: "#fb923c", lineHeight: 1.55, flexShrink: 0 }} />
               <span>
-                AI 生图依赖第三方，偶有不稳定 ·
+                生图依赖官方服务器稳定性，偶有不稳定 ·
                 <strong style={{ color: "var(--text-secondary)", margin: "0 2px" }}>失败积分自动返还</strong>
                 · 排队请勿刷新
                 {provider === "tuzi" && (
@@ -1706,8 +1797,10 @@ export default function HomePage() {
             title="上传参考图"
           >
             <i className="ri-image-add-line" style={{ fontSize: 18, lineHeight: 1 }} />
-            {referenceImage && (
-              <span style={{ position: "absolute", top: 5, right: 5, width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", border: "1.5px solid var(--glass-bg, #121212)" }} />
+            {referenceImages.length > 0 && (
+              <span style={{ position: "absolute", top: 3, right: 3, minWidth: 14, height: 14, padding: "0 4px", borderRadius: 999, background: "var(--accent)", color: "var(--btn-text)", fontSize: 9, fontFamily: "var(--font-space)", fontWeight: 600, lineHeight: "14px", textAlign: "center", border: "1.5px solid var(--glass-bg, #121212)" }}>
+                {referenceImages.length}
+              </span>
             )}
           </button>
           {/* 设置 */}
@@ -1773,23 +1866,32 @@ export default function HomePage() {
         </div>
         <div className="mobile-settings-body">
 
-          {/* Reference image display (mobile settings) */}
-          {referenceImage && (
+          {/* Reference images display (mobile settings) */}
+          {referenceImages.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
-              <div style={{ display: "flex", gap: 9, padding: 8, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={referenceImage.thumbnail} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 7, flexShrink: 0, border: "1px solid var(--border)" }} />
-                <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 3 }}>
-                  <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{referenceImage.name}</p>
-                  <p style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{formatFileSize(referenceImage.size)}</p>
-                </div>
-                <button
-                  onClick={() => setReferenceImage(null)}
-                  style={{ alignSelf: "center", width: 26, height: 26, borderRadius: 7, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <i className="ri-close-line" style={{ fontSize: 15, lineHeight: 1 }} />
-                </button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <SideLabel icon="ri-image-circle-line">创作参考</SideLabel>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                  {referenceImages.length} / {MAX_REFERENCE_IMAGES}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+                {referenceImages.map((ref, idx) => (
+                  <div key={`${ref.name}-${idx}`} style={{ position: "relative", aspectRatio: "1 / 1", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={ref.thumbnail} alt={ref.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <button type="button" onClick={() => removeReferenceImage(idx)} aria-label="移除"
+                      style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.65)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <i className="ri-close-line" style={{ fontSize: 12, lineHeight: 1 }} />
+                    </button>
+                  </div>
+                ))}
+                {referenceImages.length < MAX_REFERENCE_IMAGES && (
+                  <button type="button" onClick={() => referenceInputRef.current?.click()} title="添加更多"
+                    style={{ aspectRatio: "1 / 1", borderRadius: 7, border: "1.5px dashed var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <i className="ri-add-line" style={{ fontSize: 20, lineHeight: 1 }} />
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1802,7 +1904,7 @@ export default function HomePage() {
             ) : (
               <>
                 {aspect === "auto" && smartInference && (() => {
-                  const isDefault = smartInference.aspect === "1:1" && !referenceImage && !prompt.trim();
+                  const isDefault = smartInference.aspect === "1:1" && referenceImages.length === 0 && !prompt.trim();
                   return !isDefault ? (
                     <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
                       → {smartInference.label}

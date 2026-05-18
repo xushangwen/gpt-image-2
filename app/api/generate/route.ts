@@ -229,6 +229,8 @@ async function readJson(req: NextRequest) {
   }
 }
 
+const MAX_REFERENCE_IMAGES = 4;
+
 function parseReferenceImage(input: unknown): ReferenceImageInput | null {
   if (!input || typeof input !== "object") return null;
   const ref = input as ReferenceImageInput;
@@ -241,7 +243,7 @@ function parseReferenceImage(input: unknown): ReferenceImageInput | null {
 
   const byteLength = Math.floor(ref.data.length * 0.75);
   if (byteLength > MAX_REFERENCE_BYTES) {
-    throw new HttpError("参考图不能超过 10 MB", 400);
+    throw new HttpError("单张参考图不能超过 10 MB", 400);
   }
 
   return {
@@ -249,6 +251,20 @@ function parseReferenceImage(input: unknown): ReferenceImageInput | null {
     mediaType: ref.mediaType,
     name: typeof ref.name === "string" && ref.name.trim() ? ref.name.trim() : "reference-image",
   };
+}
+
+// 支持新版数组 referenceImages 与旧版单图 referenceImage（向后兼容）
+function parseReferenceImages(arrInput: unknown, singleInput: unknown): ReferenceImageInput[] {
+  const raw = Array.isArray(arrInput) ? arrInput : (singleInput ? [singleInput] : []);
+  if (raw.length > MAX_REFERENCE_IMAGES) {
+    throw new HttpError(`最多支持 ${MAX_REFERENCE_IMAGES} 张参考图`, 400);
+  }
+  const parsed: ReferenceImageInput[] = [];
+  for (const item of raw) {
+    const ref = parseReferenceImage(item);
+    if (ref) parsed.push(ref);
+  }
+  return parsed;
 }
 
 function getExtension(mediaType: string) {
@@ -541,12 +557,17 @@ async function editOneViaGenerationsEndpoint(
   prompt: string,
   size: string,
   quality: string,
-  referenceImage: ReferenceImageInput,
+  referenceImages: ReferenceImageInput[],
   config: GenerateConfig
 ): Promise<ImageResult> {
   if (!config.referenceEndpoint) {
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
+
+  // tuzi 文档示例：image 字段支持数组 ["base64", "base64"]；单图时仍兼容传字符串
+  const imageField = referenceImages.length === 1
+    ? referenceImageToDataUrl(referenceImages[0])
+    : referenceImages.map(referenceImageToDataUrl);
 
   const body: Record<string, unknown> = {
     model: config.referenceModel,
@@ -556,9 +577,8 @@ async function editOneViaGenerationsEndpoint(
     n: 1,
     output_format: "jpeg",
     output_compression: 85,
-    [config.referenceImageField]: referenceImageToDataUrl(referenceImage),
+    [config.referenceImageField]: imageField,
   };
-  // 仅对支持 quality 的模型（如 dall-e-3）传该字段；gpt-image-* 不接受会被中转商拒绝
   if (QUALITY_SUPPORTED_MODELS.has(config.referenceModel)) {
     const resolvedQuality = getReferenceQuality(config, quality);
     if (resolvedQuality) body.quality = resolvedQuality;
@@ -570,7 +590,7 @@ async function editOneViaGenerationsEndpoint(
       {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-        body: JSON.stringify({ ...body, /* apiKey 切了 endpoint 不变 */ }),
+        body: JSON.stringify(body),
       },
       "参考图生成请求"
     );
@@ -582,19 +602,14 @@ async function editOneViaImagesEndpoint(
   prompt: string,
   size: string,
   quality: string,
-  referenceImage: ReferenceImageInput,
+  referenceImages: ReferenceImageInput[],
   config: GenerateConfig
 ): Promise<ImageResult> {
   if (!config.referenceEndpoint) {
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const bytes = Buffer.from(referenceImage.data!, "base64");
-  const extension = getExtension(referenceImage.mediaType!);
-  const safeBaseName = referenceImage.name!.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 80) || "reference-image";
-  const file = new File([bytes], `${safeBaseName}.${extension}`, { type: referenceImage.mediaType });
   const formData = new FormData();
-
   appendIfDefined(formData, "model", config.referenceModel);
   appendIfDefined(formData, "prompt", prompt);
   appendIfDefined(formData, "size", size);
@@ -604,7 +619,21 @@ async function editOneViaImagesEndpoint(
   appendIfDefined(formData, "response_format", "b64_json");
   appendIfDefined(formData, "output_format", "jpeg");
   appendIfDefined(formData, "output_compression", 85);
-  formData.append(config.referenceImageField, file);
+
+  // OpenAI / yunwu 标准：多张参考图通过同名 image[] 字段重复 append
+  // 单张时按 image 也兼容；多张时统一用 image[] 以避免被服务端覆盖
+  const fieldKey = referenceImages.length > 1
+    ? `${config.referenceImageField}[]`
+    : config.referenceImageField;
+
+  for (let i = 0; i < referenceImages.length; i++) {
+    const ref = referenceImages[i];
+    const bytes = Buffer.from(ref.data!, "base64");
+    const extension = getExtension(ref.mediaType!);
+    const safeBaseName = ref.name!.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "-").slice(0, 80) || `reference-${i + 1}`;
+    const file = new File([bytes], `${safeBaseName}.${extension}`, { type: ref.mediaType });
+    formData.append(fieldKey, file);
+  }
 
   return withRetry(config.provider, config, async (cfg) => {
     const rawText = await fetchUpstream(
@@ -624,7 +653,7 @@ async function editOneViaChatEndpoint(
   prompt: string,
   size: string,
   quality: string,
-  referenceImage: ReferenceImageInput,
+  referenceImages: ReferenceImageInput[],
   config: GenerateConfig
 ): Promise<ImageResult> {
   if (!config.referenceEndpoint) {
@@ -644,7 +673,11 @@ async function editOneViaChatEndpoint(
               role: "user",
               content: [
                 { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
-                { type: "image_url", image_url: { url: referenceImageToDataUrl(referenceImage) } },
+                // 多图：逐张 append 为 image_url part
+                ...referenceImages.map(ref => ({
+                  type: "image_url" as const,
+                  image_url: { url: referenceImageToDataUrl(ref) },
+                })),
               ],
             },
           ],
@@ -661,16 +694,16 @@ function generateWithReference(
   prompt: string,
   size: string,
   quality: string,
-  referenceImage: ReferenceImageInput,
+  referenceImages: ReferenceImageInput[],
   config: GenerateConfig
 ) {
   if (config.referenceEndpointKind === "chat-completions") {
-    return editOneViaChatEndpoint(prompt, size, quality, referenceImage, config);
+    return editOneViaChatEndpoint(prompt, size, quality, referenceImages, config);
   }
   if (config.referenceEndpointKind === "images-generations") {
-    return editOneViaGenerationsEndpoint(prompt, size, quality, referenceImage, config);
+    return editOneViaGenerationsEndpoint(prompt, size, quality, referenceImages, config);
   }
-  return editOneViaImagesEndpoint(prompt, size, quality, referenceImage, config);
+  return editOneViaImagesEndpoint(prompt, size, quality, referenceImages, config);
 }
 
 export async function POST(req: NextRequest) {
@@ -692,11 +725,12 @@ export async function POST(req: NextRequest) {
     console.log(`[generate ${traceId}] START user=${userId.slice(-8)}`);
 
     const raw = await readJson(req);
-    const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
+    const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage, referenceImages } = raw;
     const reqProvider: ProviderName | undefined =
       raw.provider === "tuzi" || raw.provider === "yunwu" ? raw.provider : undefined;
     const config = getConfig(reqProvider);
-    const parsedReferenceImage = parseReferenceImage(referenceImage);
+    // 同时兼容新版 referenceImages 数组与旧版 referenceImage 单图
+    const parsedReferenceImages = parseReferenceImages(referenceImages, referenceImage);
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);
@@ -756,8 +790,8 @@ export async function POST(req: NextRequest) {
     // 并发生成 count 张，每次独立请求，兼容所有不支持 n>1 的中转
     const results = await Promise.allSettled(
       Array.from({ length: count }, () => (
-        parsedReferenceImage
-          ? generateWithReference(prompt.trim(), upstreamSize, quality, parsedReferenceImage, config)
+        parsedReferenceImages.length > 0
+          ? generateWithReference(prompt.trim(), upstreamSize, quality, parsedReferenceImages, config)
           : generateOne(baseBody, config)
       ))
     );
