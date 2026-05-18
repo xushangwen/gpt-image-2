@@ -28,6 +28,9 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [cancellingTarget, setCancellingTarget] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [toast, setToast] = useState("");
 
   function showToast(msg: string) {
@@ -89,8 +92,45 @@ export default function AdminPage() {
     }
   }
 
+  function openCancelDialog(order: Order) {
+    setCancellingTarget(order);
+    setCancelReason("");
+  }
+
+  function closeCancelDialog() {
+    if (cancelSubmitting) return;
+    setCancellingTarget(null);
+    setCancelReason("");
+  }
+
+  async function handleCancelSubmit() {
+    if (!cancellingTarget) return;
+    setCancelSubmitting(true);
+    try {
+      const res = await fetch("/api/admin/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order_id: cancellingTarget.id,
+          reason: cancelReason.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "取消失败");
+      showToast(`✓ 订单 ${cancellingTarget.id} 已取消`);
+      setCancellingTarget(null);
+      setCancelReason("");
+      await fetchData();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "取消失败");
+    } finally {
+      setCancelSubmitting(false);
+    }
+  }
+
   const pendingOrders = orders.filter(o => o.status === "pending");
-  const confirmedOrders = orders.filter(o => o.status !== "pending");
+  const confirmedOrders = orders.filter(o => o.status === "confirmed");
+  const cancelledOrders = orders.filter(o => o.status === "cancelled");
 
   if (loading) {
     return (
@@ -117,6 +157,123 @@ export default function AdminPage() {
           {toast}
         </div>
       )}
+
+      {/* Cancel confirm dialog */}
+      {cancellingTarget && (() => {
+        const pkg = PACKAGES.find(p => p.id === cancellingTarget.package_id);
+        return (
+          <div
+            onClick={(e) => { if (e.target === e.currentTarget) closeCancelDialog(); }}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 1000,
+              background: "rgba(0,0,0,0.68)",
+              backdropFilter: "blur(14px)",
+              WebkitBackdropFilter: "blur(14px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+            }}
+          >
+            <div style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "var(--surface)",
+              borderRadius: 12,
+              boxShadow: "var(--mosaic-card-shadow)",
+              overflow: "hidden",
+            }}>
+              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>
+                  取消订单
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  该操作不可撤销
+                </div>
+              </div>
+
+              <div style={{ padding: 20 }}>
+                <div style={{
+                  padding: "12px 14px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "var(--mosaic-control-bg)",
+                  marginBottom: 14,
+                }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-space)", letterSpacing: "0.04em", color: "var(--text-primary)" }}>
+                    {cancellingTarget.id}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    {cancellingTarget.email} · {pkg?.name} ¥{pkg?.price_yuan}
+                  </div>
+                </div>
+
+                <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+                  取消原因（可选，≤200 字）
+                </label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value.slice(0, 200))}
+                  placeholder="例如：用户未付款 / 重复下单 / 测试单"
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    background: "var(--mosaic-control-bg)",
+                    color: "var(--text-primary)",
+                    fontSize: 13,
+                    fontFamily: "inherit",
+                    resize: "vertical",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  <button
+                    onClick={closeCancelDialog}
+                    disabled={cancelSubmitting}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text-primary)",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      cursor: cancelSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    返回
+                  </button>
+                  <button
+                    onClick={handleCancelSubmit}
+                    disabled={cancelSubmitting}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      borderRadius: 8,
+                      border: "none",
+                      background: cancelSubmitting ? "var(--border)" : "#dc2626",
+                      color: cancelSubmitting ? "var(--text-muted)" : "#fff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: cancelSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {cancelSubmitting ? "处理中..." : "确认取消"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Header */}
       <header className="ck-app-header" style={{ padding: "0 24px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
@@ -187,25 +344,44 @@ export default function AdminPage() {
                             {order.email} · {new Date(order.created_at).toLocaleString("zh-CN")}
                           </div>
                         </div>
-                        <button
-                          className="ck-primary-btn"
-                          onClick={() => handleConfirm(order.id)}
-                          disabled={confirming === order.id}
-                          style={{
-                            padding: "8px 16px",
-                            borderRadius: 8,
-                            border: "none",
-                            background: confirming === order.id ? "var(--border)" : "var(--text-primary)",
-                            color: confirming === order.id ? "var(--text-muted)" : "var(--bg)",
-                            fontSize: 13,
-                            fontWeight: 600,
-                            cursor: confirming === order.id ? "not-allowed" : "pointer",
-                            transition: "all 0.15s",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {confirming === order.id ? "处理中..." : "确认到账"}
-                        </button>
+                        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                          <button
+                            className="ck-btn"
+                            onClick={() => openCancelDialog(order)}
+                            disabled={confirming === order.id}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              border: "1px solid var(--border)",
+                              background: "transparent",
+                              color: "var(--text-muted)",
+                              fontSize: 13,
+                              fontWeight: 500,
+                              cursor: confirming === order.id ? "not-allowed" : "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            取消
+                          </button>
+                          <button
+                            className="ck-primary-btn"
+                            onClick={() => handleConfirm(order.id)}
+                            disabled={confirming === order.id}
+                            style={{
+                              padding: "8px 16px",
+                              borderRadius: 8,
+                              border: "none",
+                              background: confirming === order.id ? "var(--border)" : "var(--text-primary)",
+                              color: confirming === order.id ? "var(--text-muted)" : "var(--bg)",
+                              fontSize: 13,
+                              fontWeight: 600,
+                              cursor: confirming === order.id ? "not-allowed" : "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {confirming === order.id ? "处理中..." : "确认到账"}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -234,6 +410,35 @@ export default function AdminPage() {
                         </div>
                         <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: "var(--ck-radius-round)", background: "rgba(74,222,128,0.1)", border: "1px solid rgba(74,222,128,0.3)", color: "#4ade80" }}>
                           已到账
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* Cancelled */}
+            {cancelledOrders.length > 0 && (
+              <section>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 10, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                  已取消
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {cancelledOrders.map(order => {
+                    const pkg = PACKAGES.find(p => p.id === order.package_id);
+                    return (
+                      <div key={order.id} className="ck-data-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 8, border: "1px solid var(--border)", opacity: 0.55 }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          <div style={{ fontSize: 13, fontFamily: "var(--font-space)", fontWeight: 600, textDecoration: "line-through", textDecorationColor: "var(--text-muted)" }}>
+                            {order.id}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                            {order.email} · {pkg?.name} ¥{pkg?.price_yuan}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: "var(--ck-radius-round)", background: "rgba(148,163,184,0.1)", border: "1px solid rgba(148,163,184,0.3)", color: "#94a3b8" }}>
+                          已取消
                         </span>
                       </div>
                     );

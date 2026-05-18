@@ -56,6 +56,21 @@ export async function confirmOrder(orderId: string, adminEmail: string): Promise
   if (error) throw new Error(error.message || `订单 ${orderId} 处理失败`);
 }
 
+export async function cancelOrder(
+  orderId: string,
+  adminEmail: string,
+  reason?: string
+): Promise<void> {
+  const db = getSupabase();
+  const { error } = await db.rpc("cancel_order", {
+    p_order_id: orderId,
+    p_admin_email: adminEmail,
+    p_reason: reason ?? null,
+  });
+
+  if (error) throw new Error(error.message || `订单 ${orderId} 取消失败`);
+}
+
 export async function listPendingOrders(): Promise<Order[]> {
   const { data, error } = await getSupabase()
     .from("orders")
