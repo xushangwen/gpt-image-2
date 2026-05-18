@@ -442,7 +442,7 @@ export default function HomePage() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
   const [showPromptHistory, setShowPromptHistory] = useState(false);
-  const [showHistory, setShowHistory] = useState(false); // 实际默认值在 useEffect 里按 localStorage 读
+  const [showHistory, setShowHistory] = useState(true); // 默认展开，localStorage 有「显式收起」记录的用户保持原选
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
@@ -495,10 +495,10 @@ export default function HomePage() {
     if (savedGeminiQuality === "auto" || savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
       setGeminiQuality(savedGeminiQuality);
     }
-    // 历史侧栏开关状态
+    // 历史侧栏开关状态：默认展开，只有用户**显式**收起过（saved === "0"）才保持收起
     try {
       const savedHistoryOpen = localStorage.getItem(LS_HISTORY_OPEN);
-      if (savedHistoryOpen === "1") setShowHistory(true);
+      if (savedHistoryOpen === "0") setShowHistory(false);
     } catch {}
     // Load full image history from IndexedDB
     void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
@@ -1987,7 +1987,7 @@ function GeminiAspectGrid({ value, onChange }: { value: string; onChange: (v: st
 // 5 格稳定性指示器，支持半格（score 1-5，0.5 step）
 function StabilityBars({ score, color }: { score: number; color: string }) {
   return (
-    <div style={{ display: "flex", gap: 2 }} aria-label={`稳定性 ${score}/5`}>
+    <div style={{ display: "flex", gap: 3 }} aria-label={`稳定性 ${score}/5`}>
       {[1, 2, 3, 4, 5].map(i => {
         const full = score >= i;
         const half = !full && score >= i - 0.5;
@@ -1996,9 +1996,9 @@ function StabilityBars({ score, color }: { score: number; color: string }) {
           <div
             key={i}
             style={{
-              width: 5,
-              height: 12,
-              borderRadius: 1.5,
+              width: 10,
+              height: 14,
+              borderRadius: 2,
               border: `1px solid ${full || half ? color : "var(--border)"}`,
               background: bg,
               position: "relative",
