@@ -9,6 +9,7 @@ export const preferredRegion = "iad1";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const UPSTREAM_TIMEOUT_MS = 180_000;
 const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
+const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
@@ -220,7 +221,10 @@ export async function POST(req: NextRequest) {
       throw new HttpError("不支持的画质选项", 400);
     }
 
-    const sizeStr = typeof size === "string" ? size : "1024x1024";
+    if (typeof size !== "string" || !ALLOWED_SIZES.has(size)) {
+      throw new HttpError("不支持的图片尺寸", 400);
+    }
+    const sizeStr = size;
 
     let parsedRef: { data: string; mediaType: string } | undefined;
     if (

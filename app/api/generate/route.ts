@@ -757,6 +757,7 @@ export async function POST(req: NextRequest) {
 
     const raw = await readJson(req);
     const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage, referenceImages } = raw;
+    // 前端线路一/线路二切换是产品特性；服务端只接受白名单值，不接受其他覆盖
     const reqProvider: ProviderName | undefined =
       raw.provider === "tuzi" || raw.provider === "yunwu" ? raw.provider : undefined;
     const config = getConfig(reqProvider);

@@ -6,6 +6,30 @@ import { HttpError } from "@/lib/errors";
 const DOWNLOAD_TIMEOUT_MS = 45_000;
 const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
+// 限制可下载来源（防止本接口被当作开放代理）。env 配置 DOWNLOAD_ALLOWED_HOSTS
+// 逗号分隔；默认放行中转商域名 + Gemini/Google 官方 CDN
+const DEFAULT_ALLOWED_HOSTS = [
+  "tu-zi.com",
+  "yunwu.ai",
+  "googleapis.com",
+  "googleusercontent.com",
+];
+
+function getAllowedHosts(): string[] {
+  const env = process.env.DOWNLOAD_ALLOWED_HOSTS?.trim();
+  if (env) return env.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  return DEFAULT_ALLOWED_HOSTS;
+}
+
+function assertHostAllowed(url: URL) {
+  const host = url.hostname.toLowerCase();
+  const allowed = getAllowedHosts();
+  const ok = allowed.some(suffix => host === suffix || host.endsWith(`.${suffix}`));
+  if (!ok) {
+    throw new HttpError("不支持下载该来源的图片", 403);
+  }
+}
+
 function sanitizeFilename(input: unknown) {
   const fallback = `imagegen-${Date.now()}.jpg`;
   if (typeof input !== "string" || !input.trim()) return fallback;
@@ -42,6 +66,7 @@ export async function POST(req: NextRequest) {
 
     const body = await readBody(req);
     const url = parseDownloadUrl(body?.url);
+    assertHostAllowed(url);
     const filename = sanitizeFilename(body?.filename);
 
     const controller = new AbortController();

@@ -1,4 +1,5 @@
 import { promises as dns } from "dns";
+import { isIPv4, isIPv6 } from "net";
 
 export class UrlSafetyError extends Error {
   constructor(message: string, public status = 400) {
@@ -6,35 +7,75 @@ export class UrlSafetyError extends Error {
   }
 }
 
-function isBlockedHost(hostname: string) {
-  const host = hostname.toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
+// 把 IPv6 缩写展开为 8 段（如 "fe80::1" → "fe80:0:0:0:0:0:0:1"）
+function expandIPv6(addr: string): string | null {
+  if (!isIPv6(addr)) return null;
+  // 含 IPv4 尾段（::ffff:1.2.3.4）由调用方先处理掉
+  if (addr.includes(".")) return null;
+  if (!addr.includes("::")) return addr;
+  const [head, tail] = addr.split("::");
+  const headSegs = head ? head.split(":") : [];
+  const tailSegs = tail ? tail.split(":") : [];
+  const missing = 8 - headSegs.length - tailSegs.length;
+  if (missing < 0) return null;
+  return [...headSegs, ...Array(missing).fill("0"), ...tailSegs].join(":");
+}
 
-  if (host.startsWith("[") && host.endsWith("]")) {
-    const inner = host.slice(1, -1);
-    if (inner === "::" || inner === "::1") return true;
-    if (inner.startsWith("::ffff:")) return isBlockedHost(inner.slice(7));
-    if (/^(::1$|fe[89ab][0-9a-f]:|f[cd][0-9a-f]{2}:|ff[0-9a-f]{2}:)/i.test(inner)) return true;
-    return false;
-  }
-
-  if (host.includes(":")) return true;
-
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!ipv4) return false;
-
-  const parts = ipv4.slice(1).map(Number);
-  if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return true;
-
+function isPrivateIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some(p => Number.isNaN(p) || p < 0 || p > 255)) return true;
   const [a, b] = parts;
   return (
+    a === 0 ||
     a === 10 ||
     a === 127 ||
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
     (a === 169 && b === 254) ||
-    a === 0
+    a >= 224 // multicast + 保留段
   );
+}
+
+function isPrivateIPv6(addr: string): boolean {
+  const lower = addr.toLowerCase();
+  if (lower === "::" || lower === "::1") return true;
+  // IPv4-mapped: ::ffff:1.2.3.4
+  const mapped = lower.match(/^::ffff:([0-9.]+)$/);
+  if (mapped) return isPrivateIPv4(mapped[1]);
+  const expanded = expandIPv6(lower);
+  if (!expanded) return true; // 无法解析时保守 block
+  const segs = expanded.split(":");
+  if (segs.length !== 8) return true;
+  const first = parseInt(segs[0], 16);
+  if (Number.isNaN(first)) return true;
+  // fc00::/7 unique-local（fc/fd 开头）
+  if ((first & 0xfe00) === 0xfc00) return true;
+  // fe80::/10 link-local
+  if ((first & 0xffc0) === 0xfe80) return true;
+  // ff00::/8 multicast
+  if ((first & 0xff00) === 0xff00) return true;
+  // 全 0 段（::）已在上面命中
+  return false;
+}
+
+function isBlockedHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+
+  // [::1] / [fe80::1] / [::ffff:127.0.0.1] 形式
+  if (host.startsWith("[") && host.endsWith("]")) {
+    return isPrivateIPv6(host.slice(1, -1));
+  }
+  // 裸 IPv6（含冒号且非 host:port，由调用方保证）
+  if (isIPv6(host)) {
+    return isPrivateIPv6(host);
+  }
+  // IPv4
+  if (isIPv4(host)) {
+    return isPrivateIPv4(host);
+  }
+  // 域名 hostname：留给后续 DNS 解析校验
+  return false;
 }
 
 export function parseSafeHttpUrl(input: string, invalidMessage = "地址无效") {
@@ -57,17 +98,20 @@ export function parseSafeHttpUrl(input: string, invalidMessage = "地址无效")
 
 // Resolves hostname via DNS and verifies the actual IP is not private,
 // preventing DNS rebinding attacks where an attacker TTL-flips a domain to an internal IP.
+// 注：lookup 与 fetch 之间仍存在毫秒级 race window（彻底消除需绑定 dispatcher，代价较大）。
 async function assertResolvedIpSafe(hostname: string) {
-  // Skip DNS lookup for raw IP addresses (already checked by parseSafeHttpUrl)
-  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.startsWith("[")) return;
+  // 跳过 IP 字面量（已被 parseSafeHttpUrl 校验过）
+  if (isIPv4(hostname) || hostname.startsWith("[") || isIPv6(hostname)) return;
   try {
-    const { address } = await dns.lookup(hostname);
-    if (isBlockedHost(address)) {
-      throw new UrlSafetyError("不支持访问内网地址", 400);
+    // all:true 拿到所有解析结果，全部验证一遍（防止 round-robin 中混内网 IP）
+    const records = await dns.lookup(hostname, { all: true });
+    for (const { address } of records) {
+      if (isBlockedHost(address)) {
+        throw new UrlSafetyError("不支持访问内网地址", 400);
+      }
     }
   } catch (err) {
     if (err instanceof UrlSafetyError) throw err;
-    // DNS resolution failure — treat as blocked to be safe
     throw new UrlSafetyError("域名解析失败", 400);
   }
 }

@@ -32,9 +32,9 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
   return process.env[`${provider.toUpperCase()}_${suffix}`]?.trim();
 }
 
-function getConfig() {
-  // 服务端强制读 env，不接受 client 覆盖 provider（避免泄漏中转商存在性）
-  const provider = getProvider();
+function getConfig(providerOverride?: ProviderName) {
+  // 前端线路一/线路二切换是产品特性；服务端只接受白名单值
+  const provider = providerOverride ?? getProvider();
   const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
   const chatEndpoint =
     getProviderEnv(provider, "CHAT_ENDPOINT") ||
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
       aspect?: unknown;
       quality?: unknown;
       referenceImage?: { data?: string; mediaType?: string };
+      provider?: unknown;
     };
     try {
       body = await req.json();
@@ -139,7 +140,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { prompt, aspect = "auto", quality = "high", referenceImage } = body;
-    const config = getConfig();
+    const reqProvider: ProviderName | undefined =
+      body.provider === "tuzi" || body.provider === "yunwu" ? body.provider : undefined;
+    const config = getConfig(reqProvider);
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);

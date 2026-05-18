@@ -57,6 +57,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_purchase_order_idx
 ON credit_transactions(order_id, type)
 WHERE order_id IS NOT NULL AND type = 'purchase';
 
+-- 防止并发新用户首次登录写两条 welcome_bonus 流水（虽然 user_credits 上的 upsert
+-- 保证不重复加积分，但流水里出现两条 +66 会让对账迷惑）
+CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_welcome_bonus_idx
+ON credit_transactions(user_id)
+WHERE type = 'welcome_bonus';
+
 -- 4.1 生图互斥锁表：阻止同一用户同时存在多个上游生图任务
 CREATE TABLE IF NOT EXISTS active_generations (
   user_id    TEXT PRIMARY KEY,
@@ -191,14 +197,15 @@ BEGIN
     RAISE EXCEPTION '订单套餐数据异常';
   END IF;
 
+  -- 如果 user_credits 还不存在（用户付款流程异常时可能没创建），先建账户再加
+  INSERT INTO user_credits (user_id, email, credits_remaining, total_used)
+  VALUES (v_order.user_id, v_order.email, 0, 0)
+  ON CONFLICT (user_id) DO NOTHING;
+
   UPDATE user_credits
   SET credits_remaining = credits_remaining + v_credits,
       updated_at        = NOW()
   WHERE user_id = v_order.user_id;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION '用户积分账户不存在';
-  END IF;
 
   UPDATE orders
   SET status       = 'confirmed',
@@ -224,5 +231,134 @@ BEGIN
   );
 
   RETURN v_order;
+END;
+$$;
+
+-- 9. 取消订单（pending → cancelled）。已 confirmed 的订单不可取消（积分已发放）
+CREATE OR REPLACE FUNCTION cancel_order(
+  p_order_id TEXT,
+  p_admin_email TEXT,
+  p_reason TEXT DEFAULT NULL
+)
+RETURNS orders
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_order orders%ROWTYPE;
+BEGIN
+  SELECT * INTO v_order
+  FROM orders
+  WHERE id = p_order_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '订单 % 不存在', p_order_id;
+  END IF;
+  IF v_order.status = 'confirmed' THEN
+    RAISE EXCEPTION '订单 % 已确认，无法取消（积分已发放）', p_order_id;
+  END IF;
+  IF v_order.status = 'cancelled' THEN
+    RETURN v_order;
+  END IF;
+
+  UPDATE orders
+  SET status       = 'cancelled',
+      confirmed_at = NOW(),
+      confirmed_by = p_admin_email
+  WHERE id = p_order_id
+  RETURNING * INTO v_order;
+
+  -- 取消记入流水（credits_delta=0 仅作为审计痕迹）
+  INSERT INTO credit_transactions (user_id, type, credits_delta, order_id, granted_by, note)
+  VALUES (
+    v_order.user_id,
+    'cancel',
+    0,
+    v_order.id,
+    p_admin_email,
+    COALESCE('订单取消：' || p_reason, '订单取消')
+  );
+
+  RETURN v_order;
+END;
+$$;
+
+-- 10. 自动取消超期未确认订单（默认 168 小时 = 7 天）。返回取消数
+CREATE OR REPLACE FUNCTION auto_cancel_stale_orders(p_older_than_hours INTEGER DEFAULT 168)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_cutoff TIMESTAMPTZ := NOW() - make_interval(hours => p_older_than_hours);
+  v_count INTEGER;
+BEGIN
+  WITH stale AS (
+    UPDATE orders
+    SET status       = 'cancelled',
+        confirmed_at = NOW(),
+        confirmed_by = 'system:auto-cancel'
+    WHERE status = 'pending'
+      AND created_at < v_cutoff
+    RETURNING id, user_id
+  )
+  INSERT INTO credit_transactions (user_id, type, credits_delta, order_id, granted_by, note)
+  SELECT user_id, 'cancel', 0, id, 'system:auto-cancel',
+         '超过 ' || p_older_than_hours || ' 小时未确认，自动取消'
+  FROM stale;
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+-- 11. 管理员手动调整积分（正数增加 / 负数扣减）。拒绝把余额变负
+CREATE OR REPLACE FUNCTION admin_adjust_credits(
+  p_user_id TEXT,
+  p_delta INTEGER,
+  p_reason TEXT,
+  p_admin_email TEXT
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_current INTEGER;
+  v_new INTEGER;
+BEGIN
+  SELECT credits_remaining INTO v_current
+  FROM user_credits
+  WHERE user_id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '用户积分账户不存在: %', p_user_id;
+  END IF;
+
+  v_new := v_current + p_delta;
+  IF v_new < 0 THEN
+    RAISE EXCEPTION '调整后余额会变负（当前=% 调整=% 结果=%）', v_current, p_delta, v_new;
+  END IF;
+
+  UPDATE user_credits
+  SET credits_remaining = v_new,
+      updated_at        = NOW()
+  WHERE user_id = p_user_id;
+
+  INSERT INTO credit_transactions (user_id, type, credits_delta, granted_by, note)
+  VALUES (
+    p_user_id,
+    'admin_adjust',
+    p_delta,
+    p_admin_email,
+    COALESCE(p_reason, '管理员调整')
+  );
+
+  RETURN v_new;
 END;
 $$;

@@ -9,6 +9,7 @@
       "regions": ["iad1"]
     },
     "app/api/enhance/route.ts": {
+      "maxDuration": 60,
       "regions": ["iad1"]
     }
   },
