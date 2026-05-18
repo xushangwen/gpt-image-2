@@ -697,6 +697,8 @@ function generateWithReference(
 }
 
 export async function POST(req: NextRequest) {
+  const reqStart = Date.now();
+  const traceId = Math.random().toString(36).slice(2, 8);
   let acquiredUserId: string | null = null;
   try {
     const { userId } = await auth();
@@ -704,9 +706,12 @@ export async function POST(req: NextRequest) {
 
     // 同一用户并发拦截：阻止前端 race / 误连点 / 网络重发触发的重复扣费
     if (!tryAcquireInflight(userId)) {
+      console.warn(`[generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=inflight`);
       throw new HttpError("已有生图正在进行中，请等待当前任务完成", 429);
     }
     acquiredUserId = userId;
+
+    console.log(`[generate ${traceId}] START user=${userId.slice(-8)}`);
 
     const raw = await readJson(req);
     const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
@@ -744,6 +749,7 @@ export async function POST(req: NextRequest) {
     if (newBalance < 0) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
+    console.log(`[generate ${traceId}] DEDUCT count=${count} provider=${config.provider} model=${config.model} size=${size} quality=${quality} balance=${newBalance}`);
 
     const upstreamSize = getProviderSize(config, size);
     const baseBody: Record<string, unknown> = {
@@ -782,6 +788,7 @@ export async function POST(req: NextRequest) {
     if (images.length === 0) {
       const firstReason = failures[0] as PromiseRejectedResult | undefined;
       const upstreamErr = firstReason?.reason instanceof UpstreamError ? firstReason.reason : null;
+      console.log(`[generate ${traceId}] FAIL elapsed=${Date.now() - reqStart}ms kind=${upstreamErr?.kind ?? "unknown"}`);
       try {
         await refundCredits(userId, count);
       } catch (refundErr) {
@@ -810,6 +817,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log(`[generate ${traceId}] OK elapsed=${Date.now() - reqStart}ms ok=${images.length} failed=${failures.length}`);
     return NextResponse.json({
       images,
       warning: failures.length > 0 ? `${failures.length} 张图片生成失败，对应积分已自动退还` : undefined,
