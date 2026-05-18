@@ -137,6 +137,14 @@ export type Database = {
         Args: { p_older_than_hours: number };
         Returns: number;
       };
+      acquire_generation_lock: {
+        Args: { p_user_id: string; p_ttl_seconds?: number };
+        Returns: boolean;
+      };
+      release_generation_lock: {
+        Args: { p_user_id: string };
+        Returns: null;
+      };
     };
   };
 };

@@ -415,7 +415,8 @@ export default function HomePage() {
   const [quality, setQuality] = useState<Quality>("auto");
   const [count, setCount] = useState(1);
   const [dark, setDark] = useState(true);
-  const [provider, setProvider] = useState<ProviderChoice>("tuzi");
+  // 默认线路二（yunwu，速度更快）；localStorage 有旧值的用户保持原选
+  const [provider, setProvider] = useState<ProviderChoice>("bltcy");
   const [aiEngine, setAiEngine] = useState<AIEngine>("openai");
   const [loading, setLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -1008,7 +1009,7 @@ export default function HomePage() {
             <div className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
               {(["tuzi", "bltcy"] as const).map((p) => {
                 const active = provider === p;
-                const recommended = p === "tuzi";
+                const recommended = p === "bltcy";
                 return (
                   <button
                     key={p}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
+import { acquireGenerationLock, releaseGenerationLock } from "@/lib/locks";
 import { getSupabase } from "@/lib/supabase";
 import { fetchSafeUrl, UrlSafetyError } from "@/lib/url-safety";
 import { HttpError } from "@/lib/errors";
@@ -70,29 +71,6 @@ const UPSTREAM_TIMEOUT_MS = 150_000;
 const QUALITY_SUPPORTED_MODELS = new Set(["gpt-image-2"]);
 // 单次生图最多重试一次（共两次尝试），换 key 后再试
 const MAX_GENERATE_ATTEMPTS = 2;
-
-// ── 服务端并发去重 ──
-// 同一 userId 短窗口内只允许一个 in-flight 生图请求，防止前端任何 bug / 网络重发 / 用户误连点
-// 导致 tuzi 端被并发调用 + 重复扣费。
-// 注：Vercel fluid compute 多实例间不共享内存，只能拦住落到同一 instance 的并发；
-// 但这已经覆盖绝大多数实际场景（同一用户的请求通常被路由到同一 instance）。
-const inflightUsers = new Map<string, number>();
-const INFLIGHT_TTL_MS = 5 * 60_000; // 兜底防止 ref 泄漏，5 分钟内若未清理则自动过期
-
-function tryAcquireInflight(userId: string): boolean {
-  const now = Date.now();
-  // 顺手清理过期项
-  for (const [k, exp] of inflightUsers) {
-    if (exp < now) inflightUsers.delete(k);
-  }
-  if (inflightUsers.has(userId)) return false;
-  inflightUsers.set(userId, now + INFLIGHT_TTL_MS);
-  return true;
-}
-
-function releaseInflight(userId: string) {
-  inflightUsers.delete(userId);
-}
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
@@ -704,10 +682,11 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) throw new HttpError("请先登录", 401);
 
-    // 同一用户并发拦截：阻止前端 race / 误连点 / 网络重发触发的重复扣费
-    if (!tryAcquireInflight(userId)) {
-      console.warn(`[generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=inflight`);
-      throw new HttpError("已有生图正在进行中，请等待当前任务完成", 429);
+    // 同一用户并发拦截：Supabase 数据库锁，跨 vercel 项目/实例/部署都生效
+    // （防止用户在多个项目实例打开页面时同一 userId 被同时扣费多次）
+    if (!await acquireGenerationLock(userId)) {
+      console.warn(`[generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=lock_held`);
+      throw new HttpError("已有生图任务进行中，请等待完成（如果你刚才取消过页面，请稍等 5 分钟自动释放）", 429);
     }
     acquiredUserId = userId;
 
@@ -828,6 +807,8 @@ export async function POST(req: NextRequest) {
     console.error("[generate] failed:", err);
     return NextResponse.json({ error: message }, { status });
   } finally {
-    if (acquiredUserId) releaseInflight(acquiredUserId);
+    if (acquiredUserId) {
+      await releaseGenerationLock(acquiredUserId);
+    }
   }
 }
