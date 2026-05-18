@@ -9,7 +9,7 @@ import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
 import GeneratingCard from "@/components/GeneratingCard";
 import Lightbox from "@/components/Lightbox";
-import HistoryDrawer from "@/components/HistoryDrawer";
+import HistorySidebar from "@/components/HistorySidebar";
 import { formatTime } from "@/lib/format";
 import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry } from "@/lib/types";
 
@@ -86,6 +86,7 @@ const LS_PROVIDER = "imagegen_provider";
 const LS_ENGINE = "imagegen_engine";
 const LS_GEMINI_ASPECT = "imagegen_gemini_aspect";
 const LS_GEMINI_QUALITY = "imagegen_gemini_quality";
+const LS_HISTORY_OPEN = "imagegen_history_panel_open";
 const MAX_HISTORY = 20;
 const MAX_PROMPTS = 15;
 const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
@@ -93,7 +94,8 @@ const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
 const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
   tuzi: { name: "线路一", desc: "兔子中转" },
-  bltcy: { name: "线路二", desc: "BLTCY" },
+  // 历史命名为 bltcy，当前实际指向 yunwu.ai；UI 已切换为「云雾」
+  bltcy: { name: "线路二", desc: "云雾" },
 };
 
 /* ── Utils ── */
@@ -427,7 +429,7 @@ export default function HomePage() {
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
   const [recentPrompts, setRecentPrompts] = useState<string[]>([]);
   const [showPromptHistory, setShowPromptHistory] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false); // 实际默认值在 useEffect 里按 localStorage 读
   const [referenceImage, setReferenceImage] = useState<ReferenceImage | null>(null);
   const [toast, setToast] = useState<{ msg: string; id: number; type: ToastType } | null>(null);
   const [copyingIdx, setCopyingIdx] = useState<number | null>(null);
@@ -479,9 +481,19 @@ export default function HomePage() {
     if (savedGeminiQuality === "auto" || savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
       setGeminiQuality(savedGeminiQuality);
     }
+    // 历史侧栏开关状态
+    try {
+      const savedHistoryOpen = localStorage.getItem(LS_HISTORY_OPEN);
+      if (savedHistoryOpen === "1") setShowHistory(true);
+    } catch {}
     // Load full image history from IndexedDB
     void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
   }, []);
+
+  /* 持久化历史侧栏开关 */
+  useEffect(() => {
+    try { localStorage.setItem(LS_HISTORY_OPEN, showHistory ? "1" : "0"); } catch {}
+  }, [showHistory]);
 
   /* Theme */
   useEffect(() => {
@@ -1035,12 +1047,16 @@ export default function HomePage() {
             </div>
           )}
           <CreditBadge />
-          {/* 历史抽屉触发按钮 */}
+          {/* 历史侧栏 toggle */}
           <Button
             variant="icon"
-            onClick={() => setShowHistory(true)}
-            title={`生成历史${history.length > 0 ? `（${history.length}）` : ""}`}
-            style={{ position: "relative" }}
+            onClick={() => setShowHistory(v => !v)}
+            title={`${showHistory ? "收起" : "展开"}历史${history.length > 0 ? `（${history.length}）` : ""}`}
+            style={{
+              position: "relative",
+              background: showHistory ? "var(--surface-2)" : undefined,
+              color: showHistory ? "var(--accent)" : undefined,
+            }}
           >
             <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1 }} />
             {history.length > 0 && (
@@ -1117,20 +1133,17 @@ export default function HomePage() {
                     style={{ width: "100%", resize: "none", borderRadius: 10, padding: "12px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "rgba(0,0,0,0.12)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
                   />
 
-                  {/* Prompt history dropdown — 浮层布局，不挤占下方按钮 */}
+                  {/* Prompt history dropdown — 流式布局，撑开 sidebar-section，
+                      sidebar 整体接管溢出 scroll，避免浮层盖住下方 sections */}
                   {showPromptHistory && recentPrompts.length > 0 && (
                     <div style={{
-                      position: "absolute",
-                      top: "calc(100% + 6px)",
-                      left: 0,
-                      right: 0,
-                      zIndex: 50,
+                      marginTop: 8,
                       borderRadius: 10,
                       border: "1px solid var(--border-soft)",
                       background: "var(--surface)",
                       boxShadow: "var(--mosaic-menu-shadow)",
                       overflow: "hidden",
-                      maxHeight: 200,
+                      maxHeight: 180,
                       overflowY: "auto",
                     }}>
                       <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
@@ -1583,6 +1596,16 @@ export default function HomePage() {
             </div>
           )}
         </main>
+
+        {/* ── 右侧历史栏（可折叠的第三栏，桌面端常驻） ── */}
+        <HistorySidebar
+          history={history}
+          open={showHistory}
+          onClose={() => setShowHistory(false)}
+          onRestore={restoreHistory}
+          onDelete={deleteHistoryEntry}
+          onClear={clearAllHistory}
+        />
       </div>
     </div>{/* layout-root closes here — fixed overlays below are outside overflow:hidden */}
 
@@ -1825,16 +1848,6 @@ export default function HomePage() {
         </div>
         </div>{/* end inner wrapper */}
       </div>
-
-      {/* ── 历史抽屉 ── */}
-      <HistoryDrawer
-        history={history}
-        open={showHistory}
-        onClose={() => setShowHistory(false)}
-        onRestore={restoreHistory}
-        onDelete={deleteHistoryEntry}
-        onClear={clearAllHistory}
-      />
 
       {/* ── Lightbox ── */}
       {lightboxIdx !== null && images[lightboxIdx] && (

@@ -43,9 +43,11 @@ const PROVIDER_PRESETS: Record<Exclude<ProviderName, "custom">, {
     referenceQuality: "",
     sizeFormat: "ratio",
   },
+  // 线路二槽位：当前指向 yunwu.ai，OpenAI 兼容接口
+  // （历史命名为 bltcy，保留代码标识稳定，env / UI desc 已切换为云雾）
   bltcy: {
-    apiEndpoint: "https://api.bltcy.ai/v1/images/generations",
-    referenceEndpoint: "https://api.bltcy.ai/v1/images/edits",
+    apiEndpoint: "https://yunwu.ai/v1/images/generations",
+    referenceEndpoint: "https://yunwu.ai/v1/images/edits",
     referenceImageField: "image",
     referenceQuality: "",
     sizeFormat: "pixel",
