@@ -64,16 +64,8 @@ const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 // gpt-image-2 + 中转排队场景下 90s 不够；150s 与 Gemini 路径对齐
 const UPSTREAM_TIMEOUT_MS = 150_000;
-// OpenAI 官方文档：gpt-image-* 系列与 dall-e-3 均支持 quality 参数。
-// gpt-image-* 取值：low / medium / high / auto（默认 auto）；dall-e-3：standard / hd。
-// tuzi 中转文档描述写"仅 dall-e-3 支持"是历史遗留，未跟进 gpt-image-* 上线后的变化，
-// 中转商本质是转发到 OpenAI，所以仍按官方传。其余模型（如 gpt-4o-image 走 chat 模式）不传。
-const QUALITY_SUPPORTED_MODELS = new Set([
-  "gpt-image-1",
-  "gpt-image-1.5",
-  "gpt-image-2",
-  "dall-e-3",
-]);
+// 本项目只用 gpt-image-2。按 OpenAI 官方支持 low/medium/high/auto。
+const QUALITY_SUPPORTED_MODELS = new Set(["gpt-image-2"]);
 // 单次生图最多重试一次（共两次尝试），换 key 后再试
 const MAX_GENERATE_ATTEMPTS = 2;
 
