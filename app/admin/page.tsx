@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { PACKAGES } from "@/lib/orders";
 
 const CANCEL_REASONS = [
@@ -74,6 +74,16 @@ function downloadCSV(filename: string, rows: (string | number | null | undefined
   URL.revokeObjectURL(url);
 }
 
+// "x 秒前"显示组件：把每秒时钟订阅限制在自己内部，避免父组件全量 re-render
+function RelativeTime({ from }: { from: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <>{relativeTime(from, now)}</>;
+}
+
 function relativeTime(fromMs: number, now: number): string {
   const sec = Math.max(0, Math.floor((now - fromMs) / 1000));
   if (sec < 5) return "刚刚";
@@ -103,7 +113,6 @@ export default function AdminPage() {
   const [toast, setToast] = useState("");
   const [search, setSearch] = useState("");
   const [lastRefreshAt, setLastRefreshAt] = useState<number>(Date.now());
-  const [now, setNow] = useState<number>(Date.now());
 
   // order ops
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -121,9 +130,11 @@ export default function AdminPage() {
   const [adjustReason, setAdjustReason] = useState<AdjustReason | "">("");
   const [adjustSubmitting, setAdjustSubmitting] = useState(false);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(""), 3000);
+    toastTimerRef.current = setTimeout(() => setToast(""), 3000);
   }
 
   const fetchData = useCallback(async (initial = false) => {
@@ -167,11 +178,7 @@ export default function AdminPage() {
     return () => clearInterval(id);
   }, [fetchData]);
 
-  // 每秒更新「x 秒前」
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // 「x 秒前」展示已迁到 RelativeTime 子组件，避免每秒触发整个 750 行 admin 重渲
 
   // 拉某用户流水
   const fetchTransactions = useCallback(async (userId: string) => {
@@ -516,7 +523,7 @@ export default function AdminPage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
-            {refreshing ? "刷新中…" : `${relativeTime(lastRefreshAt, now)}更新`}
+            {refreshing ? "刷新中…" : <><RelativeTime from={lastRefreshAt} />更新</>}
           </span>
           <button onClick={() => fetchData(false)} disabled={refreshing}
             style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 28, padding: "0 10px", fontSize: 12, color: "var(--text-secondary)", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, cursor: refreshing ? "not-allowed" : "pointer" }}>

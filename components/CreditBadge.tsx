@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PaymentModal from "./PaymentModal";
+import { subscribeCreditsDeduct, subscribeCreditsRefresh } from "@/lib/events";
+
+const LOW_CREDIT_THRESHOLD = 10;
 
 export default function CreditBadge() {
   const [credits, setCredits] = useState<number | null>(null);
@@ -22,20 +25,14 @@ export default function CreditBadge() {
   }, [fetchCredits]);
 
   useEffect(() => {
-    const onDeduct = (e: Event) => {
-      const count = (e as CustomEvent<{ count: number }>).detail.count;
+    const unsubDeduct = subscribeCreditsDeduct(count => {
       setCredits(prev => prev !== null ? Math.max(0, prev - count) : prev);
-    };
-    const onRefresh = () => fetchCredits();
-    window.addEventListener("credits-deduct", onDeduct);
-    window.addEventListener("credits-refresh", onRefresh);
-    return () => {
-      window.removeEventListener("credits-deduct", onDeduct);
-      window.removeEventListener("credits-refresh", onRefresh);
-    };
+    });
+    const unsubRefresh = subscribeCreditsRefresh(() => fetchCredits());
+    return () => { unsubDeduct(); unsubRefresh(); };
   }, [fetchCredits]);
 
-  const low = credits !== null && credits <= 10;
+  const low = credits !== null && credits <= LOW_CREDIT_THRESHOLD;
 
   return (
     <>

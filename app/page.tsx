@@ -11,6 +11,7 @@ import GeneratingCard from "@/components/GeneratingCard";
 import Lightbox from "@/components/Lightbox";
 import HistorySidebar from "@/components/HistorySidebar";
 import { formatTime } from "@/lib/format";
+import { emitCreditsDeduct, emitCreditsRefresh } from "@/lib/events";
 import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry } from "@/lib/types";
 
 /* ── Local types ── */
@@ -357,7 +358,25 @@ async function idbSaveVersion(entry: VersionEntry): Promise<void> {
     const db = await openIDB();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("versions", "readwrite");
-      tx.objectStore("versions").put(entry);
+      const store = tx.objectStore("versions");
+      store.put(entry);
+
+      // 顺手清理超过 MAX_HISTORY 条的最旧版本，避免 IDB 无限增长 → 移动端配额耗尽
+      const items: { id: string; ts: number }[] = [];
+      const cursorReq = store.openCursor();
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (cursor) {
+          const v = cursor.value as VersionEntry;
+          items.push({ id: v.id, ts: v.timestamp });
+          cursor.continue();
+        } else if (items.length > MAX_HISTORY) {
+          items.sort((a, b) => a.ts - b.ts);
+          for (const { id } of items.slice(0, items.length - MAX_HISTORY)) {
+            store.delete(id);
+          }
+        }
+      };
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror    = () => { db.close(); reject(tx.error); };
     });
@@ -446,11 +465,19 @@ function loadHistory(): HistoryEntry[] {
   try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]"); } catch { return []; }
 }
 function saveHistory(entries: HistoryEntry[]) {
+  const trimmed = entries.slice(0, MAX_HISTORY);
   try {
-    localStorage.setItem(LS_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
+    localStorage.setItem(LS_HISTORY, JSON.stringify(trimmed));
   } catch (err) {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
-      console.warn("[storage] localStorage 已满，历史记录未保存");
+      // 降级：清空 thumbnail base64（最占空间）后再试，元数据保留以便 UI 仍能展示
+      const lite = trimmed.map(e => ({ ...e, thumbnail: "" }));
+      try {
+        localStorage.setItem(LS_HISTORY, JSON.stringify(lite));
+        console.warn("[storage] localStorage 配额紧张，已退化为不缓存缩略图");
+      } catch {
+        console.warn("[storage] localStorage 配额溢出，历史未保存");
+      }
     }
   }
 }
@@ -779,7 +806,7 @@ export default function HomePage() {
     setElapsed(null);
     setShowPromptHistory(false);
     setDisplayAspect(aiEngine === "gemini" ? toDisplayAspect(geminiAspect) : toDisplayAspect(effectiveAspect));
-    window.dispatchEvent(new CustomEvent("credits-deduct", { detail: { count } }));
+    emitCreditsDeduct(count);
 
     setElapsed(0);
     const start = Date.now();
@@ -824,7 +851,7 @@ export default function HomePage() {
       if (res.status === 402) {
         // Fetch current credits to show in modal
         fetch("/api/credits").then(r => r.json()).then(d => setCurrentCredits(d.credits_remaining ?? 0)).catch(() => {});
-        window.dispatchEvent(new CustomEvent("credits-refresh"));
+        emitCreditsRefresh();
         setShowPaymentModal(true);
         return;
       }
@@ -863,7 +890,7 @@ export default function HomePage() {
       setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
       idbSaveVersion(versionEntry).catch(err => console.warn("[idb] save version failed:", err));
-      window.dispatchEvent(new CustomEvent("credits-refresh"));
+      emitCreditsRefresh();
       setHistory(prev => {
         const next = [entry, ...prev].slice(0, MAX_HISTORY);
         saveHistory(next);
@@ -882,7 +909,7 @@ export default function HomePage() {
       if (err instanceof Error && err.name === "AbortError") return;
       if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "未知错误");
-      window.dispatchEvent(new CustomEvent("credits-refresh"));
+      emitCreditsRefresh();
     } finally {
       if (generateControllerRef.current === controller) generateControllerRef.current = null;
       if (mountedRef.current) setLoading(false);
@@ -891,16 +918,22 @@ export default function HomePage() {
     }
   }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, showToast, smartInference]);
 
-  /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
+  /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus.
+     用 ref 持有最新 handleGenerate + lightboxIdx，effect 一次性绑定，
+     避免 handleGenerate 因依赖众多每次重建导致频繁 add/remove listener */
+  const handleGenerateRef = useRef(handleGenerate);
+  const lightboxOpenRef = useRef(false);
+  useEffect(() => { handleGenerateRef.current = handleGenerate; }, [handleGenerate]);
+  useEffect(() => { lightboxOpenRef.current = lightboxIdx !== null; }, [lightboxIdx]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && lightboxIdx === null) {
-        handleGenerate();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !lightboxOpenRef.current) {
+        handleGenerateRef.current();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleGenerate, lightboxIdx]);
+  }, []);
 
   const clearImages = useCallback(() => { setImages([]); setError(null); setActiveVersionId(null); setLightboxIdx(null); }, []);
 
@@ -910,10 +943,23 @@ export default function HomePage() {
     });
   }, [showToast]);
 
+  const downloadAllTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const downloadAll = useCallback(() => {
-    images.forEach((img, i) => setTimeout(() => handleDownload(img, i), i * 400));
+    // 清掉上一次未完成的下载 timer，防止用户重新生成后下载到旧 images（闭包陈旧）
+    downloadAllTimersRef.current.forEach(clearTimeout);
+    downloadAllTimersRef.current = images.map((img, i) =>
+      setTimeout(() => handleDownload(img, i), i * 400)
+    );
     showToast(`正在下载 ${images.length} 张图片`);
   }, [images, handleDownload, showToast]);
+
+  // 组件卸载或重新生成时清空遗留下载 timer
+  useEffect(() => {
+    return () => {
+      downloadAllTimersRef.current.forEach(clearTimeout);
+      downloadAllTimersRef.current = [];
+    };
+  }, []);
 
   const copyImageToClipboard = useCallback(async (img: ImageResult, idx: number) => {
     setCopyingIdx(idx);

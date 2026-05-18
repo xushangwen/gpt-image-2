@@ -36,6 +36,15 @@ export default function RootLayout({
   return (
     <ClerkProvider appearance={clerkAppearance} localization={clerkLocalization}>
       <html lang="zh-CN" className="h-full">
+        <head>
+          {/* 在 React hydration 之前同步设置 data-theme，避免首屏 dark→light 闪烁。
+              页面正常 useEffect 仍会持久化用户的切换偏好（key="theme"） */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{var s=localStorage.getItem('theme');var d=s?s==='dark':!window.matchMedia('(prefers-color-scheme: light)').matches;document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
+            }}
+          />
+        </head>
         <body className={`${spaceGrotesk.variable} ${notoSansSC.variable} antialiased h-full`}>
           {children}
         </body>
