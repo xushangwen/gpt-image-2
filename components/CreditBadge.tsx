@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import PaymentModal from "./PaymentModal";
 import { subscribeCreditsDeduct, subscribeCreditsRefresh } from "@/lib/events";
 
@@ -9,13 +9,16 @@ const LOW_CREDIT_THRESHOLD = 10;
 export default function CreditBadge() {
   const [credits, setCredits] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const fetchCredits = useCallback(async () => {
     try {
       const res = await fetch("/api/credits");
       if (res.ok) {
         const data = await res.json();
-        setCredits(data.credits_remaining);
+        if (mountedRef.current) setCredits(data.credits_remaining);
       }
     } catch {}
   }, []);
@@ -26,6 +29,7 @@ export default function CreditBadge() {
 
   useEffect(() => {
     const unsubDeduct = subscribeCreditsDeduct(count => {
+      if (!mountedRef.current) return;
       setCredits(prev => prev !== null ? Math.max(0, prev - count) : prev);
     });
     const unsubRefresh = subscribeCreditsRefresh(() => fetchCredits());

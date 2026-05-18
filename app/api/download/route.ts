@@ -94,8 +94,9 @@ export async function POST(req: NextRequest) {
       throw new HttpError(`图片源站返回错误 ${response.status}`, 502);
     }
 
-    const contentType = response.headers.get("content-type") || "application/octet-stream";
-    if (!contentType.startsWith("image/") && contentType !== "application/octet-stream") {
+    // 严格只放行 image/*，删 application/octet-stream 兜底（攻击者拿下中转商可转发任意二进制）
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.startsWith("image/")) {
       throw new HttpError("下载地址返回的不是图片", 415);
     }
 

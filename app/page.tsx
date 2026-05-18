@@ -530,7 +530,7 @@ export default function HomePage() {
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const settingsSheetRef = useRef<HTMLDivElement>(null);
 
-  /* Close settings sheet on outside tap */
+  /* Close settings sheet on outside tap / ESC（a11y：键盘用户原本只能 Tab 出 sheet 到背景） */
   useEffect(() => {
     if (!mobileSettingsOpen) return;
     const onPointerDown = (e: PointerEvent) => {
@@ -538,8 +538,18 @@ export default function HomePage() {
         setMobileSettingsOpen(false);
       }
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMobileSettingsOpen(false);
+      }
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [mobileSettingsOpen]);
 
   /* Load from localStorage —— Safari 私密模式、cookies 关闭都会抛 SecurityError，整段 try 包裹避免挂载崩 */
@@ -568,7 +578,20 @@ export default function HomePage() {
       console.warn("[init] localStorage unavailable, using defaults:", err);
     }
     // Load full image history from IndexedDB
-    void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
+    void idbLoadVersions().then(v => {
+      if (v.length > 0) {
+        setVersions(v);
+        // 从恢复的 versionLabel(V<n>) 回填计数器，下次生成不会再从 V1 开始
+        const maxN = Math.max(
+          0,
+          ...v.map(x => {
+            const m = x.versionLabel?.match(/V(\d+)/);
+            return m ? parseInt(m[1], 10) : 0;
+          })
+        );
+        versionCounterRef.current = maxN;
+      }
+    });
   }, []);
 
   /* 持久化历史侧栏开关 */
@@ -1134,12 +1157,15 @@ export default function HomePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* AI 引擎切换 */}
-          <div className={`ck-segmented ck-segmented--header header-engine-seg${!GEMINI_ENABLED ? " header-engine-single" : ""}`} style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
+          <div role="radiogroup" aria-label="AI 引擎" className={`ck-segmented ck-segmented--header header-engine-seg${!GEMINI_ENABLED ? " header-engine-single" : ""}`} style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
             {(GEMINI_ENABLED ? ["openai", "gemini"] as const : ["openai"] as const).map((eng, i) => {
               const active = aiEngine === eng;
               return (
                 <button
                   key={eng}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
                   onClick={() => setAiEngine(eng)}
                   title={eng === "openai" ? "GPT-Image-2" : "Google Gemini"}
                   data-active={active}
@@ -1169,13 +1195,16 @@ export default function HomePage() {
           </div>
           {/* 线路切换（仅 OpenAI 模式可见） */}
           {aiEngine === "openai" && (
-            <div className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
+            <div role="radiogroup" aria-label="生图线路" className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
               {(["tuzi", "yunwu"] as const).map((p) => {
                 const active = provider === p;
                 const recommended = p === "yunwu";
                 return (
                   <button
                     key={p}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
                     onClick={() => setProvider(p)}
                     title={`${PROVIDER_LABELS[p].name}${PROVIDER_LABELS[p].recommended ? "（推荐）" : ""} · ${PROVIDER_STABILITY[p].hint}`}
                     data-active={active}

@@ -10,9 +10,10 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-space",
 });
 
+// 仅加载首屏实际用到的两个 weight，每个中文字体 ~200KB；删除几乎不用的 300
 const notoSansSC = Noto_Sans_SC({
   subsets: ["latin"],
-  weight: ["300", "400", "500"],
+  weight: ["400", "500"],
   variable: "--font-cn",
 });
 
