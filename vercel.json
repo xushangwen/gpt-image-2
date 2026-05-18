@@ -11,5 +11,11 @@
     "app/api/enhance/route.ts": {
       "regions": ["iad1"]
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/auto-cancel-stale?older_than_hours=168",
+      "schedule": "0 16 * * *"
+    }
+  ]
 }

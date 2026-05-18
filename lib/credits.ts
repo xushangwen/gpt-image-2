@@ -124,3 +124,47 @@ export async function addCredits(
     note: `手动充值订单 ${orderId}`,
   });
 }
+
+// Admin manually adjusts credits (positive or negative). Atomic via RPC; refuses
+// negative deltas that would drive balance below zero.
+export async function adminAdjustCredits(
+  userId: string,
+  delta: number,
+  reason: string,
+  adminEmail: string
+): Promise<number> {
+  const db = getSupabase();
+  const { data, error } = await db.rpc("admin_adjust_credits", {
+    p_user_id: userId,
+    p_delta: delta,
+    p_reason: reason,
+    p_admin_email: adminEmail,
+  });
+  if (error) throw new Error(`调整积分失败: ${error.message}`);
+  return data as number;
+}
+
+export interface CreditTransaction {
+  id: number;
+  user_id: string;
+  type: string;
+  credits_delta: number;
+  order_id: string | null;
+  note: string | null;
+  granted_by: string | null;
+  created_at: string;
+}
+
+export async function listUserTransactions(
+  userId: string,
+  limit = 50
+): Promise<CreditTransaction[]> {
+  const { data, error } = await getSupabase()
+    .from("credit_transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`查询流水失败: ${error.message}`);
+  return (data ?? []) as CreditTransaction[];
+}

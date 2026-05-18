@@ -124,6 +124,19 @@ export type Database = {
         Args: { p_order_id: string; p_admin_email: string; p_reason?: string | null };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
+      admin_adjust_credits: {
+        Args: {
+          p_user_id: string;
+          p_delta: number;
+          p_reason: string;
+          p_admin_email: string;
+        };
+        Returns: number;
+      };
+      auto_cancel_stale_orders: {
+        Args: { p_older_than_hours: number };
+        Returns: number;
+      };
     };
   };
 };

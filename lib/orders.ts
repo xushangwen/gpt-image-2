@@ -82,6 +82,15 @@ export async function listPendingOrders(): Promise<Order[]> {
   return (data ?? []) as Order[];
 }
 
+export async function autoCancelStaleOrders(olderThanHours = 168): Promise<number> {
+  const db = getSupabase();
+  const { data, error } = await db.rpc("auto_cancel_stale_orders", {
+    p_older_than_hours: olderThanHours,
+  });
+  if (error) throw new Error(`自动取消旧订单失败: ${error.message}`);
+  return (data as number) ?? 0;
+}
+
 export async function listRecentOrders(limit = 50): Promise<Order[]> {
   const { data, error } = await getSupabase()
     .from("orders")
