@@ -6,7 +6,9 @@ import { HttpError } from "@/lib/errors";
 export const maxDuration = 300;
 export const preferredRegion = "iad1";
 
-const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+// 走 yunwu 中转商，兼容 Google 原生 generateContent 协议
+// 旧 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"（Google 直连，已不用）
+const GEMINI_API_BASE = (process.env.GEMINI_API_BASE?.trim() || "https://yunwu.ai/v1beta");
 const UPSTREAM_TIMEOUT_MS = 180_000;
 const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
 const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
@@ -14,10 +16,17 @@ const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg",
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
 
-function getApiKey(): string {
-  const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key) throw new HttpError("GEMINI_API_KEY 未配置，请在 .env.local 中添加", 500);
-  return key;
+// 支持逗号 / 空白分隔多 key，随机挑一个（serverless 无共享状态，随机比轮询更稳）
+// 优先 YUNWU_GEMINI_API_KEY（yunwu 中转的 sk-...）；向后兼容 GEMINI_API_KEY（旧 Google 直连）
+function pickApiKey(): string {
+  const raw = (process.env.YUNWU_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? "").trim();
+  if (!raw) throw new HttpError("YUNWU_GEMINI_API_KEY 未配置，请在 .env.local 中添加", 500);
+  const keys = raw.split(/[,\s]+/).map((k) => k.trim()).filter(Boolean);
+  if (keys.length === 0) throw new HttpError("YUNWU_GEMINI_API_KEY 配置无效", 500);
+  if (keys.length === 1) return keys[0];
+  const picked = keys[Math.floor(Math.random() * keys.length)];
+  console.log(`[gemini/generate] 使用 key ...${picked.slice(-4)}（共 ${keys.length} 个）`);
+  return picked;
 }
 
 function getModel(): string {
@@ -279,7 +288,7 @@ export async function POST(req: NextRequest) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
 
-    const apiKey = getApiKey();
+    const apiKey = pickApiKey();
     const model = getModel();
     // aspectRatio from payload takes priority; fall back to pixel-size conversion
     const resolvedAspect =
