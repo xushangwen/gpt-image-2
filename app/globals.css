@@ -1443,7 +1443,8 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    /* 键盘弹起时 page.tsx 的 visualViewport 监听器会把高度写到 --keyboard-inset */
+    bottom: calc(max(16px, env(safe-area-inset-bottom, 16px)) + var(--keyboard-inset, 0px));
     padding: 12px;
     border-radius: var(--ck-radius-card);
     background: var(--glass-bg);
@@ -1452,6 +1453,7 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
     -webkit-backdrop-filter: blur(24px) saturate(160%);
     box-shadow: 0 4px 28px rgba(0, 0, 0, 0.20);
     z-index: 30;
+    transition: bottom 0.2s ease;
   }
 
   /* 浮动设置卡片：与输入栏底部对齐，向上延伸 62vh，盖在输入栏上方 */

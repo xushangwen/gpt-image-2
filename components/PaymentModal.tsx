@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PACKAGES, type PackageId } from "@/lib/orders";
 
 interface Props {
@@ -18,6 +18,45 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [agreed, setAgreed] = useState(false);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
+
+  // ESC 关闭 + Tab 焦点循环（focus trap）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  // 锁背景滚动 + 打开时把焦点送进 modal
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeBtnRef.current?.focus();
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   async function handleCreateOrder() {
     if (!agreed) {
@@ -48,6 +87,9 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="payment-modal-title"
       style={{
         position: "fixed",
         inset: 0,
@@ -62,7 +104,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
+      <div ref={modalRef} style={{
         width: "100%",
         maxWidth: 420,
         background: "var(--surface)",
@@ -80,7 +122,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
           borderBottom: "1px solid var(--border)",
         }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>
+            <div id="payment-modal-title" style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>
               {step === "select" ? "购买生图次数" : "完成付款"}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
@@ -90,7 +132,9 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
             </div>
           </div>
           <button
+            ref={closeBtnRef}
             onClick={onClose}
+            aria-label="关闭"
             className="action-btn ck-icon-btn"
             style={{ width: 28, height: 28, borderRadius: 6, border: "none", background: "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%)", boxShadow: "var(--mosaic-button-shadow)", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >

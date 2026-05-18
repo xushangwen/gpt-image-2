@@ -109,7 +109,14 @@ function FlickeringGrid({ color, flickerChance, gridGap, maxOpacity, squareSize 
     const handleReduceMotionChange = (event: MediaQueryListEvent) => {
       reduceMotion = event.matches;
       window.cancelAnimationFrame(animationFrameId);
-      drawGrid();
+      animationFrameId = 0;
+      if (reduceMotion) {
+        // 只画一帧静态网格
+        drawGrid();
+      } else {
+        // 显式启动 RAF 循环，避免依赖 drawGrid 内分支的隐式重启
+        animationFrameId = window.requestAnimationFrame(drawGrid);
+      }
     };
 
     initializeGrid();

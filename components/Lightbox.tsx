@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Button from "@/components/ui/Button";
 import Spinner from "@/components/ui/Spinner";
 
@@ -32,11 +33,51 @@ export default function Lightbox({
 }: Props) {
   const img = images[index];
   const src = img ? imageSrc(img) : undefined;
+  const bgRef = useRef<HTMLDivElement>(null);
+  const downOnBg = useRef(false);
+
+  // 键盘：ESC 关闭 / 左右切图。组件内置，避免父组件全局监听
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === "ArrowLeft" && index > 0) {
+        onNavigate(index - 1);
+      } else if (e.key === "ArrowRight" && index < images.length - 1) {
+        onNavigate(index + 1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [index, images.length, onClose, onNavigate]);
+
+  // 锁背景滚动，避免移动端 lightbox 打开后页面跟着滑
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // 触屏拖拽时常常 pointerdown 在图上、pointerup 在背板，原本直接 onClick 误关闭。
+  // 改成 down 和 up 必须都在背板上才算"点背板关闭"
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    downOnBg.current = e.target === bgRef.current;
+  };
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (downOnBg.current && e.target === bgRef.current) onClose();
+    downOnBg.current = false;
+  };
 
   return (
     <div
+      ref={bgRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="大图预览"
       style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.92)", backdropFilter: "blur(14px)", animation: "fadeIn 0.15s ease" }}
-      onClick={onClose}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
     >
       {src && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -44,7 +85,8 @@ export default function Lightbox({
           src={src}
           alt="大图预览"
           style={{ maxWidth: "84vw", maxHeight: "88vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 32px 80px rgba(0,0,0,0.7)", animation: "fadeUp 0.2s ease" }}
-          onClick={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
+          onPointerUp={e => e.stopPropagation()}
         />
       )}
 

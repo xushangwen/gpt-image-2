@@ -596,17 +596,25 @@ export default function HomePage() {
     };
   }, []);
 
-  /* Keyboard: ESC / arrows for lightbox */
+  // Keyboard for Lightbox 已迁移到 Lightbox 组件内部（避免全局监听 + 修 a11y）
+
+  /* iOS 键盘弹起时把虚拟键盘高度写到 CSS 变量，让 mobile-input-bar 上移避免被遮挡 */
   useEffect(() => {
-    if (lightboxIdx === null) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLightboxIdx(null);
-      if (e.key === "ArrowLeft") setLightboxIdx(i => i !== null ? Math.max(0, i - 1) : null);
-      if (e.key === "ArrowRight") setLightboxIdx(i => i !== null ? Math.min(images.length - 1, i + 1) : null);
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--keyboard-inset", `${inset}px`);
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [lightboxIdx, images.length]);
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      document.documentElement.style.removeProperty("--keyboard-inset");
+    };
+  }, []);
 
   /* Close prompt history on outside click */
   useEffect(() => {
