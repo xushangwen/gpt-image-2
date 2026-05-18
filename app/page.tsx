@@ -900,6 +900,9 @@ export default function HomePage() {
     background: "var(--sidebar-section-bg)",
     border: "1px solid var(--sidebar-section-border)",
     boxShadow: "var(--sidebar-section-shadow)",
+    // Flexbox column 容器内子项默认 flex-shrink:1，会压缩兄弟节点而不是触发 scroll；
+    // 显式禁用收缩，让外层 scroll 容器接管溢出，避免历史展开等场景挤压上方
+    flexShrink: 0,
   };
 
   const sidebarSectionBodyStyle: React.CSSProperties = {
@@ -981,13 +984,17 @@ export default function HomePage() {
             <div className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
               {(["tuzi", "bltcy"] as const).map((p) => {
                 const active = provider === p;
+                const recommended = p === "tuzi";
                 return (
                   <button
                     key={p}
                     onClick={() => setProvider(p)}
-                    title={PROVIDER_LABELS[p].desc}
+                    title={recommended ? `${PROVIDER_LABELS[p].desc}（推荐）` : PROVIDER_LABELS[p].desc}
                     data-active={active}
                     style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
                       padding: "4px 10px",
                       height: 28,
                       fontSize: 11,
@@ -1002,6 +1009,13 @@ export default function HomePage() {
                       lineHeight: 1,
                     }}
                   >
+                    {recommended && (
+                      <i
+                        className="ri-sparkling-2-fill"
+                        aria-label="推荐"
+                        style={{ fontSize: 11, lineHeight: 1, color: "#fbbf24", flexShrink: 0 }}
+                      />
+                    )}
                     <span style={{ color: active ? "#fff" : "currentColor" }}>{PROVIDER_LABELS[p].name}</span>
                   </button>
                 );
@@ -1050,15 +1064,33 @@ export default function HomePage() {
                       e.target.style.borderColor = "var(--border-focus)";
                       if (recentPrompts.length > 0) setShowPromptHistory(true);
                     }}
-                    onBlur={e => e.target.style.borderColor = "var(--border)"}
+                    onBlur={e => {
+                      e.target.style.borderColor = "var(--border)";
+                      // dropdown 内的 mousedown 已经 preventDefault 阻止失焦
+                      // 这里关闭只在点击 dropdown 外（含下方按钮）时触发
+                      setShowPromptHistory(false);
+                    }}
                     placeholder="描述你想生成的图像..."
                     rows={6}
                     style={{ width: "100%", resize: "none", borderRadius: 10, padding: "12px 12px", fontSize: 13, lineHeight: 1.65, outline: "none", background: "rgba(0,0,0,0.12)", border: "1px solid var(--border)", color: "var(--text-primary)", fontFamily: "var(--font-cn), system-ui", transition: "border-color 0.15s" }}
                   />
 
-                  {/* Prompt history dropdown */}
+                  {/* Prompt history dropdown — 浮层布局，不挤占下方按钮 */}
                   {showPromptHistory && recentPrompts.length > 0 && (
-                    <div style={{ marginTop: 8, borderRadius: 10, border: "1px solid var(--border-soft)", background: "var(--surface)", boxShadow: "var(--mosaic-menu-shadow)", overflow: "hidden", maxHeight: 154, overflowY: "auto" }}>
+                    <div style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      left: 0,
+                      right: 0,
+                      zIndex: 50,
+                      borderRadius: 10,
+                      border: "1px solid var(--border-soft)",
+                      background: "var(--surface)",
+                      boxShadow: "var(--mosaic-menu-shadow)",
+                      overflow: "hidden",
+                      maxHeight: 200,
+                      overflowY: "auto",
+                    }}>
                       <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid var(--border)" }}>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
                           <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 最近使用
