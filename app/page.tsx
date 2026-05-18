@@ -48,6 +48,56 @@ const GEMINI_QUALITY_OPTIONS: { label: string; value: Quality; icon: string; eta
   { label: "4K",   value: "high",   icon: "ri-signal-wifi-3-fill", eta: "~60s" },
 ];
 
+// 心理预期时间（秒）：基于 QUALITY_OPTIONS 的 base 值，根据其他参数微调。
+// 用途：在生成等待界面给用户参数化预估，而不是用固定文案"超过 60s"。
+function estimateEtaSeconds(args: {
+  engine: AIEngine;
+  quality: Quality;
+  aspect: AspectRatio;
+  geminiAspect: string;
+  hasReference: boolean;
+  count: number;
+}): number {
+  const { engine, quality, aspect, geminiAspect, hasReference, count } = args;
+  const base = engine === "gemini"
+    ? ({ auto: 40, low: 30, medium: 40, high: 60 } as const)[quality]
+    : ({ auto: 70, low: 50, medium: 70, high: 120 } as const)[quality];
+  let sec: number = base;
+  // 非方形构图通常上游更慢（更多 token / 排队权重不同）
+  const isWide = engine === "openai"
+    ? aspect === "3:2" || aspect === "2:3"
+    : geminiAspect !== "1:1";
+  if (isWide) sec += 15;
+  // 参考图：OpenAI 走 /v1/images/edits，比文本生图多 15-25s；Gemini 多约 10s
+  if (hasReference) sec += engine === "openai" ? 20 : 10;
+  // 多张：中转商不一定真并发，保守 +20%
+  if (count > 1) sec = Math.round(sec * 1.2);
+  return sec;
+}
+
+// 生成等待面板的参数摘要（"横版 · 高画质 · 含参考图"），帮用户一眼看出为什么慢
+function describeGenerationParams(args: {
+  engine: AIEngine;
+  quality: Quality;
+  aspect: AspectRatio;
+  geminiAspect: string;
+  count: number;
+  hasReference: boolean;
+}): string {
+  const { engine, quality, aspect, geminiAspect, count, hasReference } = args;
+  const parts: string[] = [];
+  if (engine === "openai") {
+    parts.push(({ auto: "自动构图", "1:1": "方形", "3:2": "横版", "2:3": "竖版" } as const)[aspect]);
+    parts.push(`${({ auto: "自动", low: "低", medium: "中", high: "高" } as const)[quality]}画质`);
+  } else {
+    parts.push(`${({ auto: "自动", low: "1K", medium: "2K", high: "4K" } as const)[quality]}画质`);
+    parts.push(geminiAspect);
+  }
+  if (count > 1) parts.push(`${count} 张`);
+  if (hasReference) parts.push("含参考图");
+  return parts.join(" · ");
+}
+
 // 14 aspect ratios supported by gemini-3.1-flash-image-preview
 // 4:1 / 1:4 / 8:1 / 1:8 are exclusive to this model
 const GEMINI_ASPECT_OPTIONS: { value: string; group: "common" | "extreme" }[] = [
@@ -581,6 +631,24 @@ export default function HomePage() {
     () => aspect === "auto" ? inferSmartAspect(prompt, referenceImages[0] ?? null) : null,
     [aspect, prompt, referenceImages]
   );
+
+  const generationEta = useMemo(() => estimateEtaSeconds({
+    engine: aiEngine,
+    quality: aiEngine === "gemini" ? geminiQuality : quality,
+    aspect,
+    geminiAspect,
+    hasReference: referenceImages.length > 0,
+    count,
+  }), [aiEngine, quality, geminiQuality, aspect, geminiAspect, referenceImages.length, count]);
+
+  const generationParamsDesc = useMemo(() => describeGenerationParams({
+    engine: aiEngine,
+    quality: aiEngine === "gemini" ? geminiQuality : quality,
+    aspect,
+    geminiAspect,
+    count,
+    hasReference: referenceImages.length > 0,
+  }), [aiEngine, quality, geminiQuality, aspect, geminiAspect, count, referenceImages.length]);
 
   const handleReferenceUpload = useCallback(async (files: FileList | File[] | undefined) => {
     if (!files || files.length === 0) return;
@@ -1546,11 +1614,19 @@ export default function HomePage() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                {`正在生成${elapsed !== null ? ` · ${elapsed}s` : ""}`}
-              </p>
-                {elapsed !== null && elapsed >= 60 && (
+                  {`正在生成${elapsed !== null ? ` · ${elapsed}s` : ""}`}
+                </p>
+                <p style={{ fontSize: 11, color: "var(--text-muted)", letterSpacing: "0.02em" }}>
+                  {generationParamsDesc} · 预计 ~{generationEta}s
+                </p>
+                {elapsed !== null && elapsed >= generationEta && elapsed < generationEta + 60 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,180,0,0.22)", background: "rgba(255,180,0,0.05)", fontSize: 12, color: "#ffb400" }}>
-                    <i className="ri-alert-line" style={{ fontSize: 14, lineHeight: 1 }} /> 超过 60s，完成后可尝试重新生成
+                    <i className="ri-time-line" style={{ fontSize: 14, lineHeight: 1 }} /> 已超出平均时间，请耐心等待
+                  </div>
+                )}
+                {elapsed !== null && elapsed >= generationEta + 60 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255,120,0,0.28)", background: "rgba(255,120,0,0.07)", fontSize: 12, color: "#ff8800" }}>
+                    <i className="ri-alert-line" style={{ fontSize: 14, lineHeight: 1 }} /> 等待时间偏长，完成后可尝试重新生成
                   </div>
                 )}
               </div>

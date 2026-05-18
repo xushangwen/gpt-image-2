@@ -515,7 +515,7 @@ async function fetchUpstream(
   return rawText;
 }
 
-// 失败后换一个 key 重试。仅对 retriable 错误尝试。
+// 按 MAX_GENERATE_ATTEMPTS 限制上游调用次数；当前为 1，即失败不自动补发第二单。
 async function withRetry<T>(
   provider: ProviderName,
   baseConfig: GenerateConfig,
@@ -523,7 +523,7 @@ async function withRetry<T>(
 ): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
-    // 重试时换 key，再 build 一份 config
+    // 如果未来明确允许重试，后续尝试会换 key；默认不会走到第二次。
     const config = attempt === 1 ? baseConfig : { ...baseConfig, apiKey: pickApiKey(provider) ?? baseConfig.apiKey };
     try {
       return await task(config);
@@ -531,8 +531,10 @@ async function withRetry<T>(
       lastErr = err;
       if (err instanceof UpstreamError) {
         if (!err.retriable) throw err;
+        if (attempt >= MAX_GENERATE_ATTEMPTS) throw err;
         console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed (${err.kind}), retrying...`);
       } else {
+        if (attempt >= MAX_GENERATE_ATTEMPTS) throw err;
         console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed:`, err);
       }
     }
