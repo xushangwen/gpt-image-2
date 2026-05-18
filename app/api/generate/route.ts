@@ -62,7 +62,12 @@ const SIZE_TO_RATIO: Record<string, string> = {
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
-const UPSTREAM_TIMEOUT_MS = 90_000;
+// gpt-image-2 + 中转排队场景下 90s 不够；150s 与 Gemini 路径对齐
+const UPSTREAM_TIMEOUT_MS = 150_000;
+// 仅这些模型支持 quality 参数（tuzi 官方文档：quality 仅 dall-e-3）
+const QUALITY_SUPPORTED_MODELS = new Set(["dall-e-3"]);
+// 单次生图最多重试一次（共两次尝试），换 key 后再试
+const MAX_GENERATE_ATTEMPTS = 2;
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
@@ -401,6 +406,68 @@ function buildReferenceChatPrompt(prompt: string, size: string, quality: string)
   ].join("\n");
 }
 
+type UpstreamErrorKind =
+  | "timeout"
+  | "network"
+  | "server_5xx"
+  | "rate_limit"
+  | "quota_exhausted"
+  | "content_blocked"
+  | "auth_failed"
+  | "bad_request"
+  | "unknown";
+
+class UpstreamError extends Error {
+  constructor(public kind: UpstreamErrorKind, message: string, public status?: number) {
+    super(message);
+    this.name = "UpstreamError";
+  }
+  // 这种错误适合在换 key 后重试一次
+  get retriable() {
+    return this.kind === "timeout" || this.kind === "network" || this.kind === "server_5xx" || this.kind === "rate_limit";
+  }
+  // 给用户看的友好中文文案，不暴露上游原文
+  get userMessage() {
+    switch (this.kind) {
+      case "timeout":          return "生成超时，请稍后重试（积分已自动退还）";
+      case "network":          return "网络异常，请检查连接后重试";
+      case "server_5xx":       return "上游服务暂时不可用，请稍后重试";
+      case "rate_limit":       return "请求过于频繁，请等待几秒后重试";
+      case "quota_exhausted":  return "服务暂时繁忙，已知悉并在处理，请稍后重试";
+      case "content_blocked":  return "内容未通过安全审查，请修改提示词后再试";
+      case "auth_failed":      return "服务配置异常，请联系管理员";
+      case "bad_request":      return "请求参数有误，请调整后重试";
+      default:                 return "生成失败，请稍后重试";
+    }
+  }
+}
+
+function classifyUpstreamError(status: number, rawText: string): UpstreamError {
+  let raw = "";
+  try {
+    const j = JSON.parse(rawText);
+    raw = String(j.error?.message ?? j.message ?? "").toLowerCase();
+  } catch {
+    raw = rawText.slice(0, 200).toLowerCase();
+  }
+
+  if (status === 401 || status === 403) return new UpstreamError("auth_failed", `auth ${status}`, status);
+  if (status === 429) {
+    if (raw.includes("quota") || raw.includes("balance") || raw.includes("额度") || raw.includes("余额")) {
+      return new UpstreamError("quota_exhausted", `quota: ${raw}`, status);
+    }
+    return new UpstreamError("rate_limit", `rate limit ${status}`, status);
+  }
+  if (status >= 500) return new UpstreamError("server_5xx", `upstream ${status}`, status);
+  if (status >= 400) {
+    if (raw.includes("content_policy") || raw.includes("safety") || raw.includes("policy") || raw.includes("禁止") || raw.includes("敏感")) {
+      return new UpstreamError("content_blocked", `blocked: ${raw}`, status);
+    }
+    return new UpstreamError("bad_request", `bad request ${status}: ${raw.slice(0, 80)}`, status);
+  }
+  return new UpstreamError("unknown", `unknown ${status}`, status);
+}
+
 async function fetchUpstream(
   url: string,
   init: Omit<RequestInit, "signal">,
@@ -413,37 +480,59 @@ async function fetchUpstream(
     response = await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(`${timeoutLabel}超时，请稍后重试`);
+      throw new UpstreamError("timeout", `${timeoutLabel}超时`);
     }
-    throw err;
+    throw new UpstreamError("network", `network error: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     clearTimeout(timeoutId);
   }
 
   const rawText = await response.text();
   if (!response.ok) {
-    let message = `API 错误 ${response.status}`;
-    try {
-      const errJson = JSON.parse(rawText);
-      message = errJson.error?.message ?? errJson.message ?? message;
-    } catch {}
-    throw new Error(message);
+    throw classifyUpstreamError(response.status, rawText);
   }
   return rawText;
 }
 
-// 单次请求，兼容不支持 n>1 的中转服务
+// 失败后换一个 key 重试。仅对 retriable 错误尝试。
+async function withRetry<T>(
+  provider: ProviderName,
+  baseConfig: GenerateConfig,
+  task: (config: GenerateConfig) => Promise<T>
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
+    // 重试时换 key，再 build 一份 config
+    const config = attempt === 1 ? baseConfig : { ...baseConfig, apiKey: pickApiKey(provider) ?? baseConfig.apiKey };
+    try {
+      return await task(config);
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof UpstreamError) {
+        if (!err.retriable) throw err;
+        console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed (${err.kind}), retrying...`);
+      } else {
+        console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed:`, err);
+      }
+    }
+  }
+  throw lastErr;
+}
+
+// 单次请求，兼容不支持 n>1 的中转服务。失败时换 key 重试一次。
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
-  const rawText = await fetchUpstream(
-    config.apiEndpoint,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify(body),
-    },
-    "图像生成请求"
-  );
-  return parseImageResponse(rawText);
+  return withRetry(config.provider, config, async (cfg) => {
+    const rawText = await fetchUpstream(
+      cfg.apiEndpoint,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify(body),
+      },
+      "图像生成请求"
+    );
+    return parseImageResponse(rawText);
+  });
 }
 
 async function editOneViaGenerationsEndpoint(
@@ -465,19 +554,24 @@ async function editOneViaGenerationsEndpoint(
     n: 1,
     [config.referenceImageField]: referenceImageToDataUrl(referenceImage),
   };
-  const resolvedQuality = getReferenceQuality(config, quality);
-  if (resolvedQuality) body.quality = resolvedQuality;
+  // 仅对支持 quality 的模型（如 dall-e-3）传该字段；gpt-image-* 不接受会被中转商拒绝
+  if (QUALITY_SUPPORTED_MODELS.has(config.referenceModel)) {
+    const resolvedQuality = getReferenceQuality(config, quality);
+    if (resolvedQuality) body.quality = resolvedQuality;
+  }
 
-  const rawText = await fetchUpstream(
-    config.referenceEndpoint,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify(body),
-    },
-    "参考图生成请求"
-  );
-  return parseImageResponse(rawText);
+  return withRetry(config.provider, config, async (cfg) => {
+    const rawText = await fetchUpstream(
+      cfg.referenceEndpoint,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({ ...body, /* apiKey 切了 endpoint 不变 */ }),
+      },
+      "参考图生成请求"
+    );
+    return parseImageResponse(rawText);
+  });
 }
 
 async function editOneViaImagesEndpoint(
@@ -500,20 +594,24 @@ async function editOneViaImagesEndpoint(
   appendIfDefined(formData, "model", config.referenceModel);
   appendIfDefined(formData, "prompt", prompt);
   appendIfDefined(formData, "size", size);
-  appendIfDefined(formData, "quality", getReferenceQuality(config, quality));
+  if (QUALITY_SUPPORTED_MODELS.has(config.referenceModel)) {
+    appendIfDefined(formData, "quality", getReferenceQuality(config, quality));
+  }
   appendIfDefined(formData, "response_format", "b64_json");
   formData.append(config.referenceImageField, file);
 
-  const rawText = await fetchUpstream(
-    config.referenceEndpoint,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${config.apiKey}` },
-      body: formData,
-    },
-    "参考图生成请求"
-  );
-  return parseImageResponse(rawText);
+  return withRetry(config.provider, config, async (cfg) => {
+    const rawText = await fetchUpstream(
+      cfg.referenceEndpoint,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.apiKey}` },
+        body: formData,
+      },
+      "参考图生成请求"
+    );
+    return parseImageResponse(rawText);
+  });
 }
 
 async function editOneViaChatEndpoint(
@@ -527,28 +625,30 @@ async function editOneViaChatEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const rawText = await fetchUpstream(
-    config.referenceEndpoint,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
-        model: config.referenceModel,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
-              { type: "image_url", image_url: { url: referenceImageToDataUrl(referenceImage) } },
-            ],
-          },
-        ],
-        max_tokens: 4096,
-      }),
-    },
-    "参考图生成请求"
-  );
-  return parseChatImageResponse(rawText);
+  return withRetry(config.provider, config, async (cfg) => {
+    const rawText = await fetchUpstream(
+      cfg.referenceEndpoint,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({
+          model: cfg.referenceModel,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
+                { type: "image_url", image_url: { url: referenceImageToDataUrl(referenceImage) } },
+              ],
+            },
+          ],
+          max_tokens: 4096,
+        }),
+      },
+      "参考图生成请求"
+    );
+    return parseChatImageResponse(rawText);
+  });
 }
 
 function generateWithReference(
@@ -610,14 +710,17 @@ export async function POST(req: NextRequest) {
     }
 
     const upstreamSize = getProviderSize(config, size);
-    const baseBody = {
+    const baseBody: Record<string, unknown> = {
       model: config.model,
       prompt: prompt.trim(),
       size: upstreamSize,
-      quality,
       response_format: "b64_json",
       n: 1,
     };
+    // 仅对支持 quality 的模型（如 dall-e-3）传 quality；gpt-image-2 中转商不接受会报 400
+    if (QUALITY_SUPPORTED_MODELS.has(config.model)) {
+      baseBody.quality = quality;
+    }
 
     // 并发生成 count 张，每次独立请求，兼容所有不支持 n>1 的中转
     const results = await Promise.allSettled(
@@ -635,24 +738,44 @@ export async function POST(req: NextRequest) {
     const failures = results.filter(result => result.status === "rejected");
 
     if (images.length === 0) {
-      await refundCredits(userId, count);
       const firstReason = failures[0] as PromiseRejectedResult | undefined;
-      throw new Error(firstReason ? getErrorMessage(firstReason.reason) : "生成失败，请重试");
+      const upstreamErr = firstReason?.reason instanceof UpstreamError ? firstReason.reason : null;
+      try {
+        await refundCredits(userId, count);
+      } catch (refundErr) {
+        // 退款也挂了，告诉用户去找客服，不要让用户白扣
+        console.error("[generate] refund failed after generation failure:", refundErr);
+        throw new HttpError(
+          `生成失败，且积分退款异常，请截图本订单联系客服处理（${upstreamErr?.userMessage ?? "未知错误"}）`,
+          502
+        );
+      }
+      const userMsg = upstreamErr?.userMessage ?? getErrorMessage(firstReason?.reason ?? "生成失败");
+      throw new HttpError(userMsg, upstreamErr?.kind === "content_blocked" ? 400 : 502);
     }
 
     const failedCount = count - images.length;
     if (failedCount > 0) {
-      await refundCredits(userId, failedCount);
+      try {
+        await refundCredits(userId, failedCount);
+      } catch (refundErr) {
+        // 部分成功时退款失败：仍把成功的图片返回，但 warning 强调
+        console.error("[generate] partial refund failed:", refundErr);
+        return NextResponse.json({
+          images,
+          warning: `${failedCount} 张生成失败，但积分退款异常，请截图联系客服补退`,
+        });
+      }
     }
 
     return NextResponse.json({
       images,
-      warning: failures.length > 0 ? `${failures.length} 张图片生成失败，已返回成功结果` : undefined,
+      warning: failures.length > 0 ? `${failures.length} 张图片生成失败，对应积分已自动退还` : undefined,
     });
   } catch (err) {
     const status = err instanceof HttpError ? err.status : 500;
-    const message = getErrorMessage(err);
-    console.error("[generate] failed:", message);
+    const message = err instanceof UpstreamError ? err.userMessage : getErrorMessage(err);
+    console.error("[generate] failed:", err);
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -302,26 +302,47 @@ export async function POST(req: NextRequest) {
     );
 
     if (images.length === 0) {
-      await refundCredits(userId, count);
       const firstReason = failures[0] as PromiseRejectedResult | undefined;
-      const msg = firstReason
+      const rawMsg = firstReason
         ? firstReason.reason instanceof Error
           ? firstReason.reason.message
           : String(firstReason.reason)
-        : "生成失败，请重试";
-      throw new Error(msg);
+        : "生成失败";
+      // 内容拦截类错误优先识别，给用户更直观的提示
+      const isBlocked = /blockReason|safety|未通过|敏感|policy/i.test(rawMsg);
+      const userMsg = isBlocked
+        ? "内容未通过安全审查，请修改提示词后再试"
+        : "生成失败，请稍后重试（积分已自动退还）";
+      try {
+        await refundCredits(userId, count);
+      } catch (refundErr) {
+        console.error("[gemini/generate] refund failed:", refundErr);
+        throw new HttpError(
+          `生成失败，且积分退款异常，请截图本订单联系客服处理（${userMsg}）`,
+          502
+        );
+      }
+      throw new HttpError(userMsg, isBlocked ? 400 : 502);
     }
 
     const failedCount = count - images.length;
     if (failedCount > 0) {
-      await refundCredits(userId, failedCount);
+      try {
+        await refundCredits(userId, failedCount);
+      } catch (refundErr) {
+        console.error("[gemini/generate] partial refund failed:", refundErr);
+        return NextResponse.json({
+          images,
+          warning: `${failedCount} 张生成失败，但积分退款异常，请截图联系客服补退`,
+        });
+      }
     }
 
     return NextResponse.json({
       images,
       warning:
         failures.length > 0
-          ? `${failures.length} 张图片生成失败，已返回成功结果`
+          ? `${failures.length} 张图片生成失败，对应积分已自动退还`
           : undefined,
     });
   } catch (err) {

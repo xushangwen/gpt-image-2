@@ -85,20 +85,34 @@ export async function deductCredits(userId: string, count: number): Promise<numb
 
 export async function refundCredits(userId: string, count: number): Promise<void> {
   const db = getSupabase();
-  const { error } = await db.rpc("add_credits", {
-    p_user_id: userId,
-    p_amount: count,
-  });
-  if (error) {
-    console.error(`[credits] refund failed for ${userId}:`, error.message);
-    return;
+  let lastError: string | null = null;
+
+  // 3 次指数退避重试：100ms / 400ms / 1600ms。退款是承诺给用户的事，绝不能静默失败。
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await new Promise(r => setTimeout(r, 100 * 4 ** attempt));
+    }
+    const { error } = await db.rpc("add_credits", {
+      p_user_id: userId,
+      p_amount: count,
+    });
+    if (!error) {
+      // 流水记录失败不阻断退款（用户已经拿回积分了），但要打日志
+      const { error: txError } = await db.from("credit_transactions").insert({
+        user_id: userId,
+        type: "refund",
+        credits_delta: count,
+        note: `生成失败退款 ${count} 积分`,
+      });
+      if (txError) {
+        console.error(`[credits] refund tx log failed for ${userId}:`, txError.message);
+      }
+      return;
+    }
+    lastError = error.message;
+    console.warn(`[credits] refund attempt ${attempt + 1}/3 failed for ${userId}:`, error.message);
   }
-  await db.from("credit_transactions").insert({
-    user_id: userId,
-    type: "refund",
-    credits_delta: count,
-    note: `生成失败退款 ${count} 积分`,
-  });
+  throw new Error(`退款失败（已重试 3 次）：${lastError ?? "unknown"}`);
 }
 
 export async function addCredits(

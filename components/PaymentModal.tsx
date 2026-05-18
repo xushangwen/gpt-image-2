@@ -17,8 +17,13 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [agreed, setAgreed] = useState(false);
 
   async function handleCreateOrder() {
+    if (!agreed) {
+      setError("请先勾选同意服务条款与隐私政策");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -150,24 +155,65 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                 </div>
               )}
 
-              <button
-                onClick={handleCreateOrder}
-                disabled={loading}
-                className="mosaic-primary-btn ck-primary-btn"
+              {/* 服务条款勾选 */}
+              <label
                 style={{
                   marginTop: 16,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  border: "1px solid",
+                  borderColor: agreed ? "var(--accent)" : "var(--border)",
+                  background: agreed ? "var(--accent-dim)" : "var(--mosaic-control-bg)",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) setError(""); }}
+                  style={{
+                    width: 16,
+                    height: 16,
+                    marginTop: 1,
+                    cursor: "pointer",
+                    accentColor: "var(--accent)",
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ fontSize: 12, lineHeight: 1.6, color: "var(--text-secondary)" }}>
+                  我已阅读并同意
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                    style={{ color: "var(--accent)", textDecoration: "underline", margin: "0 2px" }}>《服务条款》</a>
+                  与
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                    style={{ color: "var(--accent)", textDecoration: "underline", margin: "0 2px" }}>《隐私政策》</a>
+                  ；理解积分一经发放不支持人民币退款，但生成失败积分自动返还。
+                </span>
+              </label>
+
+              <button
+                onClick={handleCreateOrder}
+                disabled={loading || !agreed}
+                className="mosaic-primary-btn ck-primary-btn"
+                style={{
+                  marginTop: 12,
                   width: "100%",
                   padding: "12px 0",
                   borderRadius: 6,
                   border: "none",
-                  background: "linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%)",
-                  color: "var(--btn-text)",
+                  background: (loading || !agreed)
+                    ? "var(--border)"
+                    : "linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%)",
+                  color: (loading || !agreed) ? "var(--text-muted)" : "var(--btn-text)",
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  opacity: loading ? 0.6 : 1,
-                  transition: "opacity 0.15s",
-                  boxShadow: "var(--mosaic-primary-shadow)",
+                  cursor: (loading || !agreed) ? "not-allowed" : "pointer",
+                  transition: "all 0.15s",
+                  boxShadow: (loading || !agreed) ? "none" : "var(--mosaic-primary-shadow)",
                 }}
               >
                 {loading ? "生成中..." : `生成订单 · ¥${pkg.price_yuan}`}

@@ -1230,6 +1230,28 @@ export default function HomePage() {
 
           {/* Generate Button */}
           <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+            {/* 安抚提示 */}
+            <div style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 6,
+              padding: "8px 10px",
+              marginBottom: 10,
+              borderRadius: 8,
+              border: "1px solid rgba(251,146,60,0.22)",
+              background: "rgba(251,146,60,0.05)",
+              fontSize: 11,
+              lineHeight: 1.55,
+              color: "var(--text-muted)",
+            }}>
+              <i className="ri-information-line" style={{ fontSize: 13, color: "#fb923c", lineHeight: 1.55, flexShrink: 0 }} />
+              <span>
+                AI 生图依赖第三方服务，偶有不稳定 ·
+                <strong style={{ color: "var(--text-secondary)", margin: "0 2px" }}>失败积分自动返还</strong>
+                · 排队请勿刷新
+              </span>
+            </div>
+
             <Button
               variant="primary"
               className="generate-btn"
@@ -1464,6 +1486,22 @@ export default function HomePage() {
                     <span>快速生成</span>
                   </span>
                 </p>
+                <div style={{
+                  marginTop: 14,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  alignSelf: "center",
+                  padding: "8px 14px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(251,146,60,0.22)",
+                  background: "rgba(251,146,60,0.05)",
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                }}>
+                  <i className="ri-shield-check-line" style={{ fontSize: 13, color: "#fb923c" }} />
+                  <span>线路偶有不稳定，<strong style={{ color: "var(--text-secondary)" }}>失败积分自动返还</strong>，请放心使用</span>
+                </div>
               </div>
             </div>
           )}
