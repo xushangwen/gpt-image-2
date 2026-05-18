@@ -120,6 +120,10 @@ export type Database = {
         Args: { p_order_id: string; p_admin_email: string };
         Returns: Database["public"]["Tables"]["orders"]["Row"];
       };
+      cancel_order: {
+        Args: { p_order_id: string; p_admin_email: string; p_reason?: string | null };
+        Returns: Database["public"]["Tables"]["orders"]["Row"];
+      };
     };
   };
 };

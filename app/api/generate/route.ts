@@ -79,6 +79,21 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
   return process.env[providerEnvName(provider, suffix)]?.trim();
 }
 
+// 支持逗号 / 空白分隔多 key，随机挑一个。serverless 无共享状态，随机比轮询更稳。
+function pickApiKey(provider: ProviderName): string | undefined {
+  const raw =
+    provider === "custom"
+      ? process.env.IMAGE_API_KEY?.trim()
+      : getProviderEnv(provider, "API_KEY");
+  if (!raw) return undefined;
+  const keys = raw.split(/[,\s]+/).map((k) => k.trim()).filter(Boolean);
+  if (keys.length === 0) return undefined;
+  if (keys.length === 1) return keys[0];
+  const picked = keys[Math.floor(Math.random() * keys.length)];
+  console.log(`[generate] ${provider} 使用 key ...${picked.slice(-4)}（共 ${keys.length} 个）`);
+  return picked;
+}
+
 function getEndpointKind(endpoint: string): ReferenceEndpointKind {
   const pathname = new URL(endpoint).pathname.replace(/\/+$/, "");
   if (pathname.endsWith("/chat/completions")) return "chat-completions";
@@ -99,7 +114,7 @@ function getSizeFormat(provider: ProviderName, preset: typeof PROVIDER_PRESETS.t
 function getConfig(providerOverride?: ProviderName): GenerateConfig {
   const provider = providerOverride ?? getProvider();
   const preset = provider === "custom" ? null : PROVIDER_PRESETS[provider];
-  const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
+  const apiKey = pickApiKey(provider);
   const apiEndpoint = getProviderEnv(provider, "API_ENDPOINT") || preset?.apiEndpoint || process.env.IMAGE_API_ENDPOINT?.trim();
   const configuredReferenceEndpoint =
     getProviderEnv(provider, "REFERENCE_ENDPOINT") ||
