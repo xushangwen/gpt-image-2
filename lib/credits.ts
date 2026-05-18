@@ -102,10 +102,11 @@ export async function refundCredits(userId: string, count: number): Promise<void
   const db = getSupabase();
   let lastError: string | null = null;
 
-  // 3 次指数退避重试：100ms / 400ms / 1600ms。退款是承诺给用户的事，绝不能静默失败。
+  // 3 次指数退避重试：第 1 次 0ms / 第 2 次 200ms / 第 3 次 400ms。
+  // 退款是承诺给用户的事，绝不能静默失败。
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
-      await new Promise(r => setTimeout(r, 100 * 4 ** attempt));
+      await new Promise(r => setTimeout(r, 200 * 2 ** (attempt - 1)));
     }
     const { error } = await db.rpc("add_credits", {
       p_user_id: userId,

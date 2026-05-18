@@ -489,6 +489,23 @@ function classifyUpstreamError(status: number, rawText: string): UpstreamError {
   return new UpstreamError("unknown", `unknown ${status}`, status);
 }
 
+// 把中转商真实返回的 model + usage 字段记到日志，便于判断是否在做"我们送 gpt-image-2
+// 实际跑 gpt-image-1.5"这种偷偷模型映射，以及核对计费 token 数与官方档位是否吻合。
+function logUpstreamMeta(rawText: string, label: string) {
+  try {
+    const j = JSON.parse(rawText);
+    const model = j?.model;
+    const usage = j?.usage;
+    if (model || usage) {
+      console.log(
+        `[upstream:${label}] model=${model ?? "-"} usage=${JSON.stringify(usage ?? {})}`
+      );
+    }
+  } catch {
+    // 非 JSON 响应（如 chat-completions 流文本）直接跳过
+  }
+}
+
 async function fetchUpstream(
   url: string,
   init: Omit<RequestInit, "signal">,
@@ -554,6 +571,7 @@ async function generateOne(body: object, config: GenerateConfig): Promise<ImageR
       },
       "图像生成请求"
     );
+    logUpstreamMeta(rawText, `${cfg.provider}:gen:${cfg.model}`);
     return parseImageResponse(rawText);
   });
 }
@@ -599,6 +617,7 @@ async function editOneViaGenerationsEndpoint(
       },
       "参考图生成请求"
     );
+    logUpstreamMeta(rawText, `${cfg.provider}:edit-gen:${cfg.referenceModel}`);
     return parseImageResponse(rawText);
   });
 }
@@ -650,6 +669,7 @@ async function editOneViaImagesEndpoint(
       },
       "参考图生成请求"
     );
+    logUpstreamMeta(rawText, `${cfg.provider}:edit-multipart:${cfg.referenceModel}`);
     return parseImageResponse(rawText);
   });
 }
@@ -691,6 +711,7 @@ async function editOneViaChatEndpoint(
       },
       "参考图生成请求"
     );
+    logUpstreamMeta(rawText, `${cfg.provider}:edit-chat:${cfg.referenceModel}`);
     return parseChatImageResponse(rawText);
   });
 }
@@ -721,9 +742,14 @@ export async function POST(req: NextRequest) {
 
     // 同一用户并发拦截：Supabase 数据库锁，跨 vercel 项目/实例/部署都生效
     // （防止用户在多个项目实例打开页面时同一 userId 被同时扣费多次）
-    if (!await acquireGenerationLock(userId)) {
+    const lockResult = await acquireGenerationLock(userId);
+    if (lockResult === "held") {
       console.warn(`[generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=lock_held`);
       throw new HttpError("已有生图任务进行中，请等待完成（如果你刚才取消过页面，请稍等 5 分钟自动释放）", 429);
+    }
+    if (lockResult === "error") {
+      console.warn(`[generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=lock_db_error`);
+      throw new HttpError("系统繁忙，请稍后重试", 503);
     }
     acquiredUserId = userId;
 

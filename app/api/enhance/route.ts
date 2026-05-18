@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { HttpError } from "@/lib/errors";
+import { acquireThrottleLock } from "@/lib/locks";
+import { getCreditsOnly, refundCredits } from "@/lib/credits";
+import { getSupabase } from "@/lib/supabase";
 
 export const maxDuration = 60;
 export const preferredRegion = "iad1";
 
 const ENHANCE_TIMEOUT_MS = 30_000;
+const ENHANCE_COST = 1;
+const ENHANCE_THROTTLE_TTL_SEC = 3;
+const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
+const MAX_PROMPT_LENGTH = 4000;
+
 type ProviderName = "tuzi" | "yunwu" | "custom";
 
 const PROVIDER_CHAT_ENDPOINTS: Record<Exclude<ProviderName, "custom">, string> = {
@@ -24,8 +32,9 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
   return process.env[`${provider.toUpperCase()}_${suffix}`]?.trim();
 }
 
-function getConfig(providerOverride?: ProviderName) {
-  const provider = providerOverride ?? getProvider();
+function getConfig() {
+  // 服务端强制读 env，不接受 client 覆盖 provider（避免泄漏中转商存在性）
+  const provider = getProvider();
   const apiKey = getProviderEnv(provider, "API_KEY") || process.env.IMAGE_API_KEY?.trim();
   const chatEndpoint =
     getProviderEnv(provider, "CHAT_ENDPOINT") ||
@@ -89,21 +98,39 @@ function normalizeMediaType(mediaType: string) {
   return mediaType === "image/jpg" ? "image/jpeg" : mediaType;
 }
 
+// 把上游错误转成不暴露中转商身份的友好文案
+function upstreamUserMessage(status: number): string {
+  if (status === 401 || status === 403) return "服务配置异常，请联系管理员";
+  if (status === 429) return "请求过于频繁，请等待几秒后重试";
+  if (status >= 500) return "提示词增强服务暂时不可用，请稍后重试";
+  return "提示词增强失败，请稍后重试";
+}
+
 type ContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
 export async function POST(req: NextRequest) {
+  let deducted = false;
+  let acquiredUserId: string | null = null;
+
   try {
     const { userId } = await auth();
     if (!userId) throw new HttpError("请先登录", 401);
+
+    // 限频：同一用户 3 秒内只能调一次，挡掉脚本刷接口
+    // fail-open，DB 抖动不影响正常用户
+    const throttleKey = `enhance:${userId}`;
+    if (!(await acquireThrottleLock(throttleKey, ENHANCE_THROTTLE_TTL_SEC))) {
+      throw new HttpError("操作过于频繁，请稍等再点击", 429);
+    }
+    acquiredUserId = userId;
 
     let body: {
       prompt?: unknown;
       aspect?: unknown;
       quality?: unknown;
       referenceImage?: { data?: string; mediaType?: string };
-      provider?: unknown;
     };
     try {
       body = await req.json();
@@ -112,16 +139,44 @@ export async function POST(req: NextRequest) {
     }
 
     const { prompt, aspect = "auto", quality = "high", referenceImage } = body;
-    const reqProvider: ProviderName | undefined =
-      body.provider === "tuzi" || body.provider === "yunwu" ? body.provider : undefined;
-    const config = getConfig(reqProvider);
+    const config = getConfig();
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);
     }
-    if (prompt.length > 4000) {
-      throw new HttpError("Prompt 不能超过 4000 个字符", 400);
+    if (prompt.length > MAX_PROMPT_LENGTH) {
+      throw new HttpError(`Prompt 不能超过 ${MAX_PROMPT_LENGTH} 个字符`, 400);
     }
+
+    // 参考图大小校验（base64 ≈ 原始字节 × 4/3）
+    if (referenceImage?.data) {
+      const byteLength = Math.floor(referenceImage.data.length * 0.75);
+      if (byteLength > MAX_REFERENCE_BYTES) {
+        throw new HttpError("参考图不能超过 10 MB", 400);
+      }
+    }
+
+    // 预检积分：余额 < 1 直接拒
+    const balance = await getCreditsOnly(userId);
+    if (balance !== null && balance < ENHANCE_COST) {
+      throw new HttpError("积分不足，请购买套餐", 402);
+    }
+
+    // 先扣后调上游，失败退款（与 /api/generate 一致）
+    const db = getSupabase();
+    const { data: deductResult, error: deductErr } = await db.rpc("deduct_credits", {
+      p_user_id: userId,
+      p_count: ENHANCE_COST,
+    });
+    if (deductErr) throw new HttpError(`扣除积分失败: ${deductErr.message}`, 500);
+    if ((deductResult as number) < 0) throw new HttpError("积分不足，请购买套餐", 402);
+    deducted = true;
+    await db.from("credit_transactions").insert({
+      user_id: userId,
+      type: "enhance",
+      credits_delta: -ENHANCE_COST,
+      note: `提示词优化 · ${prompt.trim().slice(0, 60)}`,
+    });
 
     const contextLines = [
       referenceImage?.data
@@ -175,40 +230,52 @@ export async function POST(req: NextRequest) {
       });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        throw new Error("提示词增强请求超时，请稍后重试");
+        throw new HttpError("提示词增强超时，请稍后重试（积分已自动退还）", 504);
       }
-      throw err;
+      throw new HttpError("网络异常，请检查连接后重试", 502);
     } finally {
       clearTimeout(timeoutId);
     }
 
     const rawText = await response.text();
-    console.info("[enhance] upstream status:", response.status, `provider=${config.provider}`, `apiHost=${new URL(config.chatEndpoint).hostname}`);
+    // 日志保留 provider 与 hostname 用于诊断，但不抛回前端
+    console.info(
+      "[enhance] upstream status:",
+      response.status,
+      `provider=${config.provider}`,
+      `apiHost=${new URL(config.chatEndpoint).hostname}`
+    );
 
     if (!response.ok) {
-      let message = `API 错误 ${response.status}`;
-      try {
-        const errJson = JSON.parse(rawText);
-        message = errJson.error?.message ?? errJson.message ?? message;
-      } catch {}
-      throw new Error(message);
+      console.error(`[enhance] upstream ${response.status}: ${rawText.slice(0, 200)}`);
+      throw new HttpError(upstreamUserMessage(response.status), 502);
     }
 
     let data: { choices?: { message?: { content?: string } }[] };
     try {
       data = JSON.parse(rawText);
     } catch {
-      throw new Error("模型返回了无法解析的数据");
+      throw new HttpError("模型返回了无法解析的数据", 502);
     }
 
     const enhancedPrompt = data.choices?.[0]?.message?.content?.trim();
-    if (!enhancedPrompt) throw new Error("模型未返回增强结果，请重试");
+    if (!enhancedPrompt) throw new HttpError("模型未返回增强结果，请重试", 502);
 
     return NextResponse.json({ enhancedPrompt });
   } catch (err) {
+    // 失败退款（HttpError 401/402/429 等积分未扣不退；只在 deducted=true 时退）
+    if (deducted && acquiredUserId) {
+      try {
+        await refundCredits(acquiredUserId, ENHANCE_COST);
+      } catch (refundErr) {
+        console.error("[enhance] refund failed:", refundErr);
+      }
+    }
     const status = err instanceof HttpError ? err.status : 500;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[enhance] failed:", message);
+    const message = err instanceof HttpError ? err.message : "提示词增强失败，请稍后重试";
+    if (!(err instanceof HttpError)) {
+      console.error("[enhance] failed:", err);
+    }
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -2,10 +2,18 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createOrder, PACKAGES, type PackageId } from "@/lib/orders";
 import { getOrCreateCredits } from "@/lib/credits";
+import { acquireThrottleLock } from "@/lib/locks";
+
+const ORDER_THROTTLE_TTL_SEC = 15;
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
+  // 限频：15 秒一次，防脚本灌库
+  if (!(await acquireThrottleLock(`order:${userId}`, ORDER_THROTTLE_TTL_SEC))) {
+    return NextResponse.json({ error: "下单过于频繁，请稍等再点击" }, { status: 429 });
+  }
 
   try {
     const body = await req.json();

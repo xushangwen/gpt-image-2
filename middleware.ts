@@ -1,6 +1,12 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const isPublicRoute = createRouteMatcher(["/sign-in(.*)", "/terms", "/privacy"]);
+// Vercel Cron 用 CRON_SECRET 鉴权，跳过 Clerk
+const isPublicRoute = createRouteMatcher([
+  "/sign-in(.*)",
+  "/terms",
+  "/privacy",
+  "/api/cron(.*)",
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) {

@@ -3,12 +3,14 @@ import { autoCancelStaleOrders } from "@/lib/orders";
 
 // Vercel Cron 调度入口。Vercel 会自动带 Authorization: Bearer $CRON_SECRET。
 export async function GET(req: NextRequest) {
+  // fail-closed：CRON_SECRET 必填，未配置直接 500，防止任意公网访问触发批处理
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "未授权" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET 未配置" }, { status: 500 });
+  }
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "未授权" }, { status: 401 });
   }
 
   try {
