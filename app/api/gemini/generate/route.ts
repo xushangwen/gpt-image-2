@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 import { HttpError } from "@/lib/errors";
+import { computeCreditCost } from "@/lib/pricing";
+import type { Quality } from "@/lib/types";
 
 export const maxDuration = 300;
 export const preferredRegion = "iad1";
@@ -273,12 +275,14 @@ export async function POST(req: NextRequest) {
     }
 
     const count = Math.min(Math.max(Number(n) || 1, 1), 4);
+    const costPerImage = computeCreditCost("gemini", quality as Quality);
+    const totalCost = costPerImage * count;
 
-    if (creditsRemaining < count) {
+    if (creditsRemaining < totalCost) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
 
-    const newBalance = await deductCredits(userId, count, prompt, {
+    const newBalance = await deductCredits(userId, totalCost, prompt, {
       engine: "gemini",
       provider: "gemini",
       size: sizeStr,
@@ -300,6 +304,9 @@ export async function POST(req: NextRequest) {
     console.info(
       "[gemini/generate] request:",
       `count=${count}`,
+      `cost/img=${costPerImage}`,
+      `total=${totalCost}`,
+      `balance=${newBalance}`,
       `size=${sizeStr}`,
       `quality=${quality}`,
       `imageSize=${QUALITY_TO_IMAGE_SIZE[quality]}`,
@@ -342,7 +349,7 @@ export async function POST(req: NextRequest) {
         ? "内容未通过安全审查，请修改提示词后再试"
         : "生成失败，请稍后重试（积分已自动退还）";
       try {
-        await refundCredits(userId, count);
+        await refundCredits(userId, totalCost);
       } catch (refundErr) {
         console.error("[gemini/generate] refund failed:", refundErr);
         throw new HttpError(
@@ -356,7 +363,7 @@ export async function POST(req: NextRequest) {
     const failedCount = count - images.length;
     if (failedCount > 0) {
       try {
-        await refundCredits(userId, failedCount);
+        await refundCredits(userId, failedCount * costPerImage);
       } catch (refundErr) {
         console.error("[gemini/generate] partial refund failed:", refundErr);
         return NextResponse.json({

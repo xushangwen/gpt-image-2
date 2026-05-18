@@ -5,6 +5,8 @@ import { acquireGenerationLock, releaseGenerationLock } from "@/lib/locks";
 import { getSupabase } from "@/lib/supabase";
 import { fetchSafeUrl, UrlSafetyError } from "@/lib/url-safety";
 import { HttpError } from "@/lib/errors";
+import { computeCreditCost } from "@/lib/pricing";
+import type { Quality } from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -753,7 +755,9 @@ export async function POST(req: NextRequest) {
       creditsRemaining = credits.credits_remaining;
     }
 
-    const newBalance = await deductCredits(userId, count, prompt, {
+    const costPerImage = computeCreditCost("openai", quality as Quality);
+    const totalCost = costPerImage * count;
+    const newBalance = await deductCredits(userId, totalCost, prompt, {
       engine: "openai",
       provider: config.provider,
       size,
@@ -762,7 +766,7 @@ export async function POST(req: NextRequest) {
     if (newBalance < 0) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
-    console.log(`[generate ${traceId}] DEDUCT count=${count} provider=${config.provider} model=${config.model} size=${size} quality=${quality} balance=${newBalance} prompt="${prompt.slice(0, 40)}"`);
+    console.log(`[generate ${traceId}] DEDUCT count=${count} cost/img=${costPerImage} total=${totalCost} provider=${config.provider} model=${config.model} size=${size} quality=${quality} balance=${newBalance} prompt="${prompt.slice(0, 40)}"`);
 
     const upstreamSize = getProviderSize(config, size);
     const baseBody: Record<string, unknown> = {
@@ -803,7 +807,7 @@ export async function POST(req: NextRequest) {
       const upstreamErr = firstReason?.reason instanceof UpstreamError ? firstReason.reason : null;
       console.log(`[generate ${traceId}] FAIL elapsed=${Date.now() - reqStart}ms kind=${upstreamErr?.kind ?? "unknown"}`);
       try {
-        await refundCredits(userId, count);
+        await refundCredits(userId, totalCost);
       } catch (refundErr) {
         // 退款也挂了，告诉用户去找客服，不要让用户白扣
         console.error("[generate] refund failed after generation failure:", refundErr);
@@ -819,7 +823,7 @@ export async function POST(req: NextRequest) {
     const failedCount = count - images.length;
     if (failedCount > 0) {
       try {
-        await refundCredits(userId, failedCount);
+        await refundCredits(userId, failedCount * costPerImage);
       } catch (refundErr) {
         // 部分成功时退款失败：仍把成功的图片返回，但 warning 强调
         console.error("[generate] partial refund failed:", refundErr);

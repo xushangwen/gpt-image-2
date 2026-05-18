@@ -44,7 +44,7 @@ export default function CreditBadge() {
         className="ck-btn"
         data-low={low}
         onClick={() => setShowModal(true)}
-        title="查看积分余额 / 购买套餐"
+        title="查看积分余额 / 购买套餐 · 不同模型与画质消耗积分不同"
         style={{
           display: "flex",
           alignItems: "center",
@@ -68,7 +68,7 @@ export default function CreditBadge() {
           className="ri-coins-line"
           style={{ fontSize: 13, lineHeight: 1, color: low ? "var(--accent)" : "var(--text-muted)" }}
         />
-        {credits === null ? "—" : `${credits} 张`}
+        {credits === null ? "—" : `${credits} 积分`}
         {low && (
           <i className="ri-arrow-right-up-line" style={{ fontSize: 11, lineHeight: 1 }} />
         )}

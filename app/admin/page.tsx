@@ -589,7 +589,7 @@ export default function AdminPage() {
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-space)", letterSpacing: "0.04em", color: "var(--text-primary)" }}>{order.id}</span>
                             <span className="ck-pill" style={{ fontSize: 11, padding: "2px 7px", borderRadius: "var(--ck-radius-round)", background: "rgba(251,146,60,0.1)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c" }}>
-                              {pkg?.name ?? order.package_id} ¥{pkg?.price_yuan} · {pkg?.credits} 张
+                              {pkg?.name ?? order.package_id} ¥{pkg?.price_yuan} · {pkg?.credits} 积分
                             </span>
                           </div>
                           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -697,7 +697,7 @@ export default function AdminPage() {
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</span>
                     </button>
                     <div style={{ display: "flex", gap: 16, fontSize: 12, fontFamily: "var(--font-space)", alignItems: "center" }}>
-                      <span style={{ color: u.credits_remaining <= 10 ? "#fb923c" : "var(--text-secondary)" }}>余 {u.credits_remaining} 张</span>
+                      <span style={{ color: u.credits_remaining <= 10 ? "#fb923c" : "var(--text-secondary)" }}>余 {u.credits_remaining} 积分</span>
                       <span style={{ color: "var(--text-muted)" }}>已用 {u.total_used}</span>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button onClick={() => openAdjustDialog(u, 1)} title="增加积分"

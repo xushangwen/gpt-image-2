@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { PACKAGES, type PackageId } from "@/lib/orders";
+import { PRICING_ROWS } from "@/lib/pricing";
 
 interface Props {
   currentCredits: number;
@@ -124,12 +125,12 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
         }}>
           <div>
             <div id="payment-modal-title" style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>
-              {step === "select" ? "购买生图次数" : "完成付款"}
+              {step === "select" ? "购买积分" : "完成付款"}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>当前余额</span>
               <span style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", fontFamily: "var(--font-space)", lineHeight: 1 }}>{currentCredits}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>张</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>积分</span>
             </div>
           </div>
           <button
@@ -178,7 +179,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                           {p.name}
                         </div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-                          {p.credits} 张 · <strong style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{(p.price_yuan / p.credits).toFixed(2)}</strong> 元/张
+                          {p.credits} 积分 · <strong style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{(p.price_yuan / p.credits).toFixed(2)}</strong> 元/积分
                         </div>
                       </div>
                       <div style={{
@@ -192,6 +193,33 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                     </button>
                   );
                 })}
+              </div>
+
+              {/* 积分消耗对照表 */}
+              <div style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                borderRadius: 8,
+                background: "var(--mosaic-control-bg)",
+                border: "1px solid var(--border-soft)",
+              }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                  <i className="ri-coins-line" style={{ fontSize: 12, lineHeight: 1 }} />
+                  积分如何使用（每张图消耗）
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 4, columnGap: 8, fontSize: 12, lineHeight: 1.5 }}>
+                  {PRICING_ROWS.map(row => (
+                    <Fragment key={row.label}>
+                      <span style={{ color: "var(--text-secondary)" }}>{row.label}</span>
+                      <span style={{ color: "var(--text-primary)", fontFamily: "var(--font-space)", fontWeight: 600, textAlign: "right" }}>
+                        {row.cost} 积分
+                      </span>
+                    </Fragment>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  生成失败积分自动返还 · 同一套餐金额，不同模型可生成的图片数量不同
+                </div>
               </div>
 
               {error && (
@@ -312,7 +340,7 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                 </div>
 
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 16 }}>
-                  微信扫码支付 <strong>¥{pkg.price_yuan}</strong>（{pkg.credits} 张）<br />
+                  微信扫码支付 <strong>¥{pkg.price_yuan}</strong>（{pkg.credits} 积分）<br />
                   <span style={{ color: "var(--accent)", fontWeight: 600 }}>
                     转账时请在备注填写订单号
                   </span>

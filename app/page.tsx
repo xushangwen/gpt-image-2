@@ -11,6 +11,8 @@ import AppHeader from "@/components/AppHeader";
 import { PROVIDER_LABELS, PROVIDER_STABILITY, stabilityColor } from "@/lib/providers";
 import { formatTime } from "@/lib/format";
 import { emitCreditsDeduct, emitCreditsRefresh } from "@/lib/events";
+import { computeTotalCost } from "@/lib/pricing";
+import PricingChangeModal from "@/components/PricingChangeModal";
 import {
   imageSrc,
   saveBlob,
@@ -410,6 +412,13 @@ export default function HomePage() {
     hasReference: referenceImages.length > 0,
   }), [aiEngine, quality, geminiQuality, aspect, geminiAspect, count, referenceImages.length]);
 
+  const effectiveQuality = aiEngine === "gemini" ? geminiQuality : quality;
+  const totalCost = useMemo(
+    () => computeTotalCost(aiEngine, effectiveQuality, count),
+    [aiEngine, effectiveQuality, count]
+  );
+  const costPerImage = count > 0 ? totalCost / count : totalCost;
+
   const handleReferenceUpload = useCallback(async (files: FileList | File[] | undefined) => {
     if (!files || files.length === 0) return;
     const list = Array.from(files);
@@ -531,7 +540,7 @@ export default function HomePage() {
     setElapsed(null);
     setShowPromptHistory(false);
     setDisplayAspect(aiEngine === "gemini" ? toDisplayAspect(geminiAspect) : toDisplayAspect(effectiveAspect));
-    emitCreditsDeduct(count);
+    emitCreditsDeduct(totalCost);
 
     setElapsed(0);
     const start = Date.now();
@@ -644,7 +653,7 @@ export default function HomePage() {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       generatingRef.current = false;
     }
-  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, showToast, smartInference]);
+  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, totalCost, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus.
      用 ref 持有最新 handleGenerate + lightboxIdx，effect 一次性绑定，
@@ -837,6 +846,7 @@ export default function HomePage() {
         onOrderCreated={() => {}}
       />
     )}
+    <PricingChangeModal onOpenPayment={() => setShowPaymentModal(true)} />
     <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
       <AppHeader
@@ -1135,6 +1145,35 @@ export default function HomePage() {
 
           {/* Generate Button */}
           <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+            {/* 本次消耗积分 */}
+            <div
+              title={`${aiEngine === "gemini" ? "Gemini" : "GPT"} · ${costPerImage} 积分 / 张 × ${count} 张`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "7px 10px",
+                marginBottom: 8,
+                borderRadius: 8,
+                background: "var(--mosaic-control-bg)",
+                border: "1px solid var(--border-soft)",
+              }}
+            >
+              <span style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                <i className="ri-coins-line" style={{ fontSize: 13, color: "var(--accent)", lineHeight: 1 }} />
+                本次消耗
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, fontFamily: "var(--font-space)" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1 }}>
+                  {totalCost}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1 }}>积分</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4, letterSpacing: "0.02em", lineHeight: 1 }}>
+                  {costPerImage}×{count}
+                </span>
+              </span>
+            </div>
+
             {/* 线路稳定性指示器 */}
             {aiEngine === "openai" && (() => {
               const stab = PROVIDER_STABILITY[provider];
@@ -1532,6 +1571,24 @@ export default function HomePage() {
           </button>
           {/* 弹簧 */}
           <span style={{ flex: 1 }} />
+          {/* 本次消耗积分（mobile inline hint） */}
+          <span
+            title={`${aiEngine === "gemini" ? "Gemini" : "GPT"} · ${costPerImage} 积分 / 张 × ${count} 张`}
+            style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 2,
+              marginRight: 8,
+              fontFamily: "var(--font-space)",
+              color: "var(--text-muted)",
+              fontSize: 11,
+              lineHeight: 1,
+            }}
+          >
+            <i className="ri-coins-line" style={{ fontSize: 12, lineHeight: 1, color: "var(--accent)", marginRight: 2 }} />
+            <span style={{ fontWeight: 700, color: "var(--text-secondary)", fontSize: 12 }}>{totalCost}</span>
+            <span>积分</span>
+          </span>
           {/* 发送按钮 */}
           <Button
             variant="primary"
