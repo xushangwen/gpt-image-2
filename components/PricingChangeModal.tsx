@@ -235,46 +235,49 @@ export default function PricingChangeModal({ onOpenPayment }: Props) {
             ))}
           </ul>
 
-          {/* CTAs */}
-          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            <button
-              onClick={dismiss}
-              className="mosaic-primary-btn ck-primary-btn"
-              style={{
-                width: "100%",
-                padding: "11px 0",
-                borderRadius: 8,
-                border: "none",
-                background: "linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%)",
-                color: "var(--btn-text)",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-                boxShadow: "var(--mosaic-primary-shadow)",
-              }}
-            >
-              我知道了，开始创作
-            </button>
-            {onOpenPayment && (
+          {/* CTAs：主按钮 + 下方轻量文字链，避免独立卡片化次要按钮造成视觉脱节 */}
+          <button
+            onClick={dismiss}
+            className="mosaic-primary-btn ck-primary-btn"
+            style={{
+              marginTop: 16,
+              width: "100%",
+              padding: "11px 0",
+              borderRadius: 8,
+              border: "none",
+              background: "linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%)",
+              color: "var(--btn-text)",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "var(--mosaic-primary-shadow)",
+            }}
+          >
+            我知道了，开始创作
+          </button>
+          {onOpenPayment && (
+            <div style={{ marginTop: 10, textAlign: "center" }}>
               <button
                 onClick={dismissAndOpenPayment}
-                className="action-btn ck-btn"
                 style={{
-                  width: "100%",
-                  padding: "9px 0",
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 4px",
+                  border: "none",
                   background: "transparent",
-                  color: "var(--text-secondary)",
-                  fontSize: 13,
+                  color: "var(--text-muted)",
+                  fontSize: 12,
                   fontWeight: 500,
                   cursor: "pointer",
+                  lineHeight: 1.4,
                 }}
               >
                 查看套餐详情
+                <i className="ri-arrow-right-s-line" style={{ fontSize: 13, lineHeight: 1 }} />
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

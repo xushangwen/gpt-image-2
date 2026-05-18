@@ -352,24 +352,27 @@ export default function PaymentModal({ currentCredits, onClose, onOrderCreated }
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="action-btn ck-btn"
-                style={{
-                  marginTop: 20,
-                  width: "100%",
-                  padding: "12px 0",
-                  borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text-primary)",
-                  fontSize: 14,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                }}
-              >
-                关闭，等待到账
-              </button>
+              <div style={{ marginTop: 14, textAlign: "center" }}>
+                <button
+                  onClick={onClose}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <i className="ri-close-line" style={{ fontSize: 13, lineHeight: 1 }} />
+                  关闭，等待到账
+                </button>
+              </div>
             </>
           )}
         </div>
