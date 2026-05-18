@@ -442,6 +442,9 @@ export default function HomePage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generateControllerRef = useRef<AbortController | null>(null);
+  // 同步门闩：防止快速连点 / Cmd+Enter 重复触发导致并发请求 + 重复扣费。
+  // setState 是异步的，loading 不能用作同步守卫；ref 才是。
+  const generatingRef = useRef(false);
   const mountedRef = useRef(true);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
@@ -633,7 +636,12 @@ export default function HomePage() {
   }, [prompt, referenceImage, aspect, quality, enhancing, provider, showToast]);
 
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || loading) return;
+    // 同步门闩：在 setLoading(true) 真正生效之前的几毫秒窗口，
+    // 用户快速连点 / 同时触发快捷键 都会读到 loading=false，导致并发请求 + 重复扣费。
+    // ref 是同步的，能在事件循环同一 tick 内立即阻止后续调用。
+    if (!prompt.trim() || generatingRef.current) return;
+    generatingRef.current = true;
+
     setMobileSettingsOpen(false);
 
     const inference = smartInference;
@@ -751,8 +759,9 @@ export default function HomePage() {
       if (generateControllerRef.current === controller) generateControllerRef.current = null;
       if (mountedRef.current) setLoading(false);
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      generatingRef.current = false;
     }
-  }, [prompt, loading, quality, geminiQuality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
+  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImage, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus */
   useEffect(() => {
