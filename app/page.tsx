@@ -1,17 +1,38 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { UserButton } from "@clerk/nextjs";
-import CreditBadge from "@/components/CreditBadge";
 import PaymentModal from "@/components/PaymentModal";
-import { userButtonAppearance, userProfileAppearance } from "@/lib/clerk-appearance";
 import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
 import GeneratingCard from "@/components/GeneratingCard";
 import Lightbox from "@/components/Lightbox";
 import HistorySidebar from "@/components/HistorySidebar";
+import AppHeader from "@/components/AppHeader";
+import { PROVIDER_LABELS, PROVIDER_STABILITY, stabilityColor } from "@/lib/providers";
 import { formatTime } from "@/lib/format";
 import { emitCreditsDeduct, emitCreditsRefresh } from "@/lib/events";
+import {
+  imageSrc,
+  saveBlob,
+  imageElementFromSrc,
+  canvasToJpegBlob,
+  downloadImage,
+  createThumbnail,
+  createHistoryThumbnail,
+  readFileAsDataUrl,
+  getImageDimensions,
+  formatFileSize,
+  dataUrlToBase64,
+  compressForStorage,
+  compressReferenceForApi,
+  toDisplayAspect,
+  ratioBox,
+  idbSaveVersion,
+  idbLoadVersions,
+  idbDeleteVersion,
+  idbClearVersions,
+  inferSmartAspect,
+} from "@/lib/image-utils";
 import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry, ReferenceImage, ToastType } from "@/lib/types";
 
 /* ── Constants ── */
@@ -131,323 +152,8 @@ const MAX_PROMPTS = 15;
 const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
 const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
-// 不暴露中转商名字（进货渠道，对用户屏蔽）
-const PROVIDER_LABELS: Record<ProviderChoice, { name: string; recommended: boolean }> = {
-  tuzi:  { name: "线路一", recommended: false },
-  yunwu: { name: "线路二", recommended: true },
-};
-
-// 稳定性评分（5 分制，支持 0.5），用户场景实测经验值
-const PROVIDER_STABILITY: Record<ProviderChoice, { score: number; hint: string }> = {
-  tuzi:  { score: 2.0, hint: "近期不稳定，建议切换到线路二" },
-  yunwu: { score: 4.5, hint: "当前最稳定，推荐使用" },
-};
-
-function stabilityColor(score: number): string {
-  if (score >= 4) return "#4ade80"; // 绿
-  if (score >= 3) return "#fbbf24"; // 黄
-  return "#f87171";                 // 红
-}
-
-/* ── Utils ── */
-function imageSrc(img: ImageResult): string | undefined {
-  if (img.b64) return `data:${img.mediaType};base64,${img.b64}`;
-  if (img.url) return img.url;
-  return undefined;
-}
-
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function imageElementFromSrc(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const el = new Image();
-    el.onload = () => resolve(el);
-    el.onerror = () => reject(new Error("图片加载失败"));
-    el.crossOrigin = "anonymous";
-    el.src = src;
-  });
-}
-
-function canvasToJpegBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("图片导出失败"));
-    }, "image/jpeg", 0.95);
-  });
-}
-
-async function downloadImage(img: ImageResult, index: number) {
-  const filename = `imagegen-${Date.now()}-${index + 1}.jpg`;
-
-  if (!img.b64 && img.url) {
-    const res = await fetch("/api/download", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: img.url, filename }),
-    });
-    if (!res.ok) {
-      let message = "图片下载失败";
-      try {
-        const data = await res.json();
-        message = data.error ?? message;
-      } catch {}
-      throw new Error(message);
-    }
-    saveBlob(await res.blob(), filename);
-    return;
-  }
-
-  const src = imageSrc(img);
-  if (!src) throw new Error("图片数据为空，无法下载");
-  const loaded = await imageElementFromSrc(src);
-  const canvas = document.createElement("canvas");
-  canvas.width = loaded.naturalWidth;
-  canvas.height = loaded.naturalHeight;
-  canvas.getContext("2d")!.drawImage(loaded, 0, 0);
-  saveBlob(await canvasToJpegBlob(canvas), filename);
-}
-
-function createThumbnail(src: string, maxW = 200): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const ratio = img.naturalHeight / img.naturalWidth;
-        const w = Math.min(maxW, img.naturalWidth);
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = Math.round(w * ratio);
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", 0.5));
-      } catch {
-        resolve("");
-      }
-    };
-    img.onerror = () => resolve("");
-    // data: URL 不需要 crossOrigin，设了反而在部分浏览器会触发 tainted canvas
-    if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
-    img.src = src;
-  });
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("参考图读取失败"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => resolve({ width: 0, height: 0 });
-    img.src = src;
-  });
-}
-
-function formatFileSize(size: number) {
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function dataUrlToBase64(dataUrl: string) {
-  const idx = dataUrl.indexOf(",");
-  return idx !== -1 ? dataUrl.slice(idx + 1) : dataUrl;
-}
-
-async function createHistoryThumbnail(img: ImageResult) {
-  const src = imageSrc(img);
-  return src ? createThumbnail(src) : "";
-}
-
-function scaleImageToCanvas(img: HTMLImageElement, maxDim: number): HTMLCanvasElement {
-  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(img.naturalWidth * scale);
-  canvas.height = Math.round(img.naturalHeight * scale);
-  canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvas;
-}
-
-async function compressForStorage(
-  file: File,
-  maxDim = 1200
-): Promise<{ dataUrl: string; mediaType: string; width: number; height: number; size: number }> {
-  const objectUrl = URL.createObjectURL(file);
-  try {
-    const img = await imageElementFromSrc(objectUrl);
-    const canvas = scaleImageToCanvas(img, maxDim);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    return { dataUrl, mediaType: "image/jpeg", width: canvas.width, height: canvas.height, size: Math.round(dataUrl.length * 0.75) };
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
-}
-
-async function compressReferenceForApi(referenceImage: ReferenceImage): Promise<{ data: string; mediaType: string }> {
-  try {
-    const img = await imageElementFromSrc(referenceImage.dataUrl);
-    const canvas = scaleImageToCanvas(img, 1536);
-    return { data: dataUrlToBase64(canvas.toDataURL("image/jpeg", 0.85)), mediaType: "image/jpeg" };
-  } catch {
-    return { data: dataUrlToBase64(referenceImage.dataUrl), mediaType: referenceImage.mediaType };
-  }
-}
-
-/* ── Aspect ratio utils ── */
-function toDisplayAspect(ratio: string): string {
-  if (!ratio || ratio === "auto") return "1 / 1";
-  return ratio.replace(":", " / ");
-}
-
-// Returns w/h pixel sizes for a mini visual ratio box (max 14px on larger side)
-function ratioBox(ratio: string): { w: number; h: number } {
-  const [ws, hs] = ratio.split(":");
-  const w = Number(ws) || 1;
-  const h = Number(hs) || 1;
-  const max = 14;
-  if (w >= h) return { w: max, h: Math.max(2, Math.round(max * h / w)) };
-  return { w: Math.max(2, Math.round(max * w / h)), h: max };
-}
-
-/* ── IndexedDB — persist full image data across sessions ── */
-const IDB_NAME = "imagegen_idb";
-const IDB_VER  = 1;
-
-function openIDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, IDB_VER);
-    req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains("versions")) {
-        req.result.createObjectStore("versions", { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror   = () => reject(req.error);
-  });
-}
-
-async function idbSaveVersion(entry: VersionEntry): Promise<void> {
-  try {
-    const db = await openIDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("versions", "readwrite");
-      const store = tx.objectStore("versions");
-      store.put(entry);
-
-      // 顺手清理超过 MAX_HISTORY 条的最旧版本，避免 IDB 无限增长 → 移动端配额耗尽
-      const items: { id: string; ts: number }[] = [];
-      const cursorReq = store.openCursor();
-      cursorReq.onsuccess = () => {
-        const cursor = cursorReq.result;
-        if (cursor) {
-          const v = cursor.value as VersionEntry;
-          items.push({ id: v.id, ts: v.timestamp });
-          cursor.continue();
-        } else if (items.length > MAX_HISTORY) {
-          items.sort((a, b) => a.ts - b.ts);
-          for (const { id } of items.slice(0, items.length - MAX_HISTORY)) {
-            store.delete(id);
-          }
-        }
-      };
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror    = () => { db.close(); reject(tx.error); };
-    });
-  } catch { /* storage full or unavailable */ }
-}
-
-async function idbLoadVersions(): Promise<VersionEntry[]> {
-  try {
-    const db = await openIDB();
-    return await new Promise<VersionEntry[]>((resolve, reject) => {
-      const tx  = db.transaction("versions", "readonly");
-      const req = tx.objectStore("versions").getAll();
-      req.onsuccess = () => {
-        db.close();
-        resolve((req.result as VersionEntry[]).sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_HISTORY));
-      };
-      req.onerror = () => { db.close(); reject(req.error); };
-    });
-  } catch { return []; }
-}
-
-async function idbDeleteVersion(id: string): Promise<void> {
-  try {
-    const db = await openIDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("versions", "readwrite");
-      tx.objectStore("versions").delete(id);
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror    = () => { db.close(); reject(tx.error); };
-    });
-  } catch { /* ignore */ }
-}
-
-async function idbClearVersions(): Promise<void> {
-  try {
-    const db = await openIDB();
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction("versions", "readwrite");
-      tx.objectStore("versions").clear();
-      tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror    = () => { db.close(); reject(tx.error); };
-    });
-  } catch { /* ignore */ }
-}
-
-/* ── Smart aspect inference ── */
-const PORTRAIT_KEYWORDS = [
-  '海报', 'poster', '竖版', '竖向', '竖式', '竖幅', '竖型',
-  '手机', '手机壁纸', '手机界面', '手机截图', '竖屏',
-  '封面', '书封', '杂志封面', '杂志',
-  '全身', '人像', '肖像', 'portrait',
-  '传单', '宣传单', '单页', '展架', '易拉宝',
-  '书签', '长图', 'flyer', 'a4', 'a3',
-];
-const LANDSCAPE_KEYWORDS = [
-  '横版', '横向', '横式', '横幅', '横屏', '宽幅',
-  '风景', '全景', 'panorama', 'landscape',
-  '桌面', '桌面壁纸', '电脑壁纸', '电脑屏幕', '显示器',
-  'banner', 'widescreen', '宽屏',
-  '电影', '电影感', '影视', '横幅广告',
-];
-
-type SmartInference = { size: string; aspect: AspectRatio; label: string };
-
-function inferSmartAspect(prompt: string, referenceImage: ReferenceImage | null): SmartInference {
-  // 优先级 1：参考图实际尺寸
-  if (referenceImage && referenceImage.width > 0 && referenceImage.height > 0) {
-    const ratio = referenceImage.width / referenceImage.height;
-    if (ratio > 1.2) return { size: '1536x1024', aspect: '3:2', label: '横版 · 参考图' };
-    if (ratio < 0.83) return { size: '1024x1536', aspect: '2:3', label: '竖版 · 参考图' };
-    return { size: '1024x1024', aspect: '1:1', label: '方形 · 参考图' };
-  }
-  // 优先级 2：关键词语义（竖版优先于横版）
-  const text = prompt.toLowerCase();
-  if (PORTRAIT_KEYWORDS.some(kw => text.includes(kw))) {
-    return { size: '1024x1536', aspect: '2:3', label: '竖版 · 语义推断' };
-  }
-  if (LANDSCAPE_KEYWORDS.some(kw => text.includes(kw))) {
-    return { size: '1536x1024', aspect: '3:2', label: '横版 · 语义推断' };
-  }
-  return { size: '1024x1024', aspect: '1:1', label: '方形 · 默认' };
-}
-
+/* 中转商展示/稳定性常量已抽至 lib/providers.ts */
+/* image / IDB / 智能 aspect / 通用工具已抽至 lib/image-utils.ts */
 
 function loadHistory(): HistoryEntry[] {
   try { return JSON.parse(localStorage.getItem(LS_HISTORY) ?? "[]"); } catch { return []; }
@@ -578,7 +284,7 @@ export default function HomePage() {
       console.warn("[init] localStorage unavailable, using defaults:", err);
     }
     // Load full image history from IndexedDB
-    void idbLoadVersions().then(v => {
+    void idbLoadVersions(MAX_HISTORY).then(v => {
       if (v.length > 0) {
         setVersions(v);
         // 从恢复的 versionLabel(V<n>) 回填计数器，下次生成不会再从 V1 开始
@@ -911,7 +617,7 @@ export default function HomePage() {
       };
       setVersions(prev => [versionEntry, ...prev].slice(0, MAX_HISTORY));
       setActiveVersionId(versionEntry.id);
-      idbSaveVersion(versionEntry).catch(err => console.warn("[idb] save version failed:", err));
+      idbSaveVersion(versionEntry, MAX_HISTORY).catch(err => console.warn("[idb] save version failed:", err));
       emitCreditsRefresh();
       setHistory(prev => {
         const next = [entry, ...prev].slice(0, MAX_HISTORY);
@@ -1133,160 +839,17 @@ export default function HomePage() {
     )}
     <div className="layout-root" style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", overflow: "hidden" }}>
 
-      {/* ── Header ── */}
-      <header className="ck-app-header" style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 20px",
-        height: 50,
-        background: "var(--bg)",
-        boxShadow: "inset 0 -1px 0 var(--border)",
-        flexShrink: 0,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="ck-logo-tile" style={{ width: 28, height: 28, borderRadius: 6, background: "var(--accent)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "var(--mosaic-primary-shadow)" }}>
-            <i className="ri-image-ai-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--btn-text)", position: "relative", zIndex: 1 }} />
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 600, letterSpacing: "-0.02em", color: "var(--text-primary)", fontFamily: "var(--font-space)" }}>
-            ImageGen
-          </span>
-          <span className="header-badge ck-pill" style={{ fontSize: 11, padding: "2px 7px", borderRadius: "var(--ck-radius-round)", border: "1px solid var(--border-focus)", background: "var(--surface-2)", color: "var(--text-secondary)", fontFamily: "var(--font-space)", letterSpacing: "0.01em" }}>
-            GPT-Image-2
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* AI 引擎切换 */}
-          <div role="radiogroup" aria-label="AI 引擎" className={`ck-segmented ck-segmented--header header-engine-seg${!GEMINI_ENABLED ? " header-engine-single" : ""}`} style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
-            {(GEMINI_ENABLED ? ["openai", "gemini"] as const : ["openai"] as const).map((eng, i) => {
-              const active = aiEngine === eng;
-              return (
-                <button
-                  key={eng}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setAiEngine(eng)}
-                  title={eng === "openai" ? "GPT-Image-2" : "Google Gemini"}
-                  data-active={active}
-                  style={{
-                    padding: "4px 10px",
-                    height: 28,
-                    fontSize: 11,
-                    fontFamily: "var(--font-space)",
-                    border: "none",
-                    borderLeft: i > 0 ? "1px solid var(--border-soft)" : "none",
-                    background: "transparent",
-                    color: active ? "#fff" : "var(--text-muted)",
-                    cursor: "pointer",
-                    transition: "background 0.15s, color 0.15s",
-                    fontWeight: active ? 500 : 400,
-                    lineHeight: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <i className={eng === "openai" ? "ri-openai-line" : "ri-google-line"} style={{ fontSize: 12, lineHeight: 1, color: active ? "#fff" : "currentColor" }} />
-                  <span style={{ color: active ? "#fff" : "currentColor" }}>{eng === "openai" ? "GPT" : "Gemini"}</span>
-                </button>
-              );
-            })}
-          </div>
-          {/* 线路切换（仅 OpenAI 模式可见） */}
-          {aiEngine === "openai" && (
-            <div role="radiogroup" aria-label="生图线路" className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
-              {(["tuzi", "yunwu"] as const).map((p) => {
-                const active = provider === p;
-                const recommended = p === "yunwu";
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setProvider(p)}
-                    title={`${PROVIDER_LABELS[p].name}${PROVIDER_LABELS[p].recommended ? "（推荐）" : ""} · ${PROVIDER_STABILITY[p].hint}`}
-                    data-active={active}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "4px 10px",
-                      height: 28,
-                      fontSize: 11,
-                      fontFamily: "var(--font-space)",
-                      border: "none",
-                      borderLeft: p === "yunwu" ? "1px solid var(--border-soft)" : "none",
-                      background: "transparent",
-                      color: active ? "#fff" : "var(--text-muted)",
-                      cursor: "pointer",
-                      transition: "background 0.15s, color 0.15s",
-                      fontWeight: active ? 500 : 400,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {recommended && (
-                      <i
-                        className="ri-sparkling-2-fill"
-                        aria-label="推荐"
-                        style={{ fontSize: 11, lineHeight: 1, color: "#fbbf24", flexShrink: 0 }}
-                      />
-                    )}
-                    <span style={{ color: active ? "#fff" : "currentColor" }}>{PROVIDER_LABELS[p].name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <CreditBadge />
-          {/* 历史侧栏 toggle */}
-          <Button
-            variant="icon"
-            onClick={() => setShowHistory(v => !v)}
-            title={`${showHistory ? "收起" : "展开"}历史${history.length > 0 ? `（${history.length}）` : ""}`}
-            style={{
-              position: "relative",
-              background: showHistory ? "var(--surface-2)" : undefined,
-              color: showHistory ? "var(--accent)" : undefined,
-            }}
-          >
-            <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1 }} />
-            {history.length > 0 && (
-              <span style={{
-                position: "absolute",
-                top: 2,
-                right: 2,
-                minWidth: 14,
-                height: 14,
-                padding: "0 4px",
-                borderRadius: 999,
-                background: "var(--accent)",
-                color: "var(--btn-text)",
-                fontSize: 9,
-                fontFamily: "var(--font-space)",
-                fontWeight: 600,
-                lineHeight: "14px",
-                textAlign: "center",
-                pointerEvents: "none",
-              }}>
-                {history.length > 99 ? "99+" : history.length}
-              </span>
-            )}
-          </Button>
-          <Button
-            variant="icon"
-            onClick={() => setDark(d => !d)}
-            title={dark ? "切换亮色" : "切换暗色"}
-          >
-            <i className={dark ? "ri-sun-line" : "ri-moon-line"} style={{ fontSize: 16, lineHeight: 1 }} />
-          </Button>
-          <UserButton
-            appearance={userButtonAppearance}
-            userProfileProps={{ appearance: userProfileAppearance }}
-          />
-        </div>
-      </header>
+      <AppHeader
+        aiEngine={aiEngine}
+        setAiEngine={setAiEngine}
+        provider={provider}
+        setProvider={setProvider}
+        dark={dark}
+        setDark={setDark}
+        showHistory={showHistory}
+        setShowHistory={setShowHistory}
+        historyCount={history.length}
+      />
 
       <div className="layout-inner" style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
