@@ -22,21 +22,17 @@ export async function getOrCreateCredits(userId: string, email: string): Promise
     .single();
 
   if (upserted) {
-    // Guard against concurrent new-user requests both passing the upsert check.
-    // Best-effort: check if welcome_bonus was already recorded before inserting.
-    // Definitive fix requires a DB-level unique constraint on (user_id, type='welcome_bonus').
-    const { count } = await db
-      .from("credit_transactions")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("type", "welcome_bonus");
-    if (!count) {
-      await db.from("credit_transactions").insert({
-        user_id: userId,
-        type: "welcome_bonus",
-        credits_delta: WELCOME_BONUS,
-        note: "新用户注册赠送",
-      });
+    // welcome_bonus 流水：DB 上 credit_transactions_welcome_bonus_idx partial unique index
+    // 保证全表每个 user_id 只能有一条；若并发已被对方插入，23505 静默忽略
+    const { error: txError } = await db.from("credit_transactions").insert({
+      user_id: userId,
+      type: "welcome_bonus",
+      credits_delta: WELCOME_BONUS,
+      note: "新用户注册赠送",
+    });
+    // 23505 = unique_violation，是预期的并发竞态，吞掉即可
+    if (txError && txError.code !== "23505") {
+      console.warn(`[credits] welcome_bonus tx insert failed for ${userId}:`, txError.message);
     }
     return upserted as UserCredits;
   }
@@ -51,80 +47,61 @@ export async function getOrCreateCredits(userId: string, email: string): Promise
   return existing as UserCredits;
 }
 
+// 仅 PGRST116（无行）返回 null；其他错误（连接异常等）抛出，避免被误判为"用户不存在"触发重复 welcome
 export async function getCreditsOnly(userId: string): Promise<number | null> {
-  const { data } = await getSupabase()
+  const { data, error } = await getSupabase()
     .from("user_credits")
     .select("credits_remaining")
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
+  if (error) throw new Error(`查询用户积分失败: ${error.message}`);
   return data ? (data.credits_remaining as number) : null;
 }
 
 // Returns new balance, or -1 if insufficient credits
-// prompt 摘要会被记入 credit_transactions.note，便于事后溯源（精准判断"是不是同一次操作扣了两次"）
+// 流水写入已合并进 RPC（同事务原子），lib 这里不再二次 insert
 export async function deductCredits(
   userId: string,
   count: number,
   prompt?: string,
-  meta?: { engine?: string; provider?: string; size?: string; quality?: string }
+  meta?: { engine?: string; provider?: string; size?: string; quality?: string; action?: "generation" | "enhance" }
 ): Promise<number> {
-  const db = getSupabase();
-  const { data, error } = await db.rpc("deduct_credits", {
+  const promptPreview = prompt?.trim().slice(0, 100) ?? "";
+  const metaTag = meta
+    ? `[${meta.engine ?? "?"}/${meta.provider ?? "-"}/${meta.size ?? "-"}/${meta.quality ?? "-"}]`
+    : "";
+  const action = meta?.action ?? "generation";
+  const note = [
+    action === "enhance" ? "提示词优化" : `生成 ${count} 张`,
+    metaTag,
+    promptPreview ? `· ${promptPreview}` : "",
+  ].filter(Boolean).join(" ");
+
+  const { data, error } = await getSupabase().rpc("deduct_credits", {
     p_user_id: userId,
     p_count: count,
+    p_type: action,
+    p_note: note,
   });
   if (error) throw new Error(`扣除积分失败: ${error.message}`);
-
-  const newBalance = data as number;
-
-  if (newBalance >= 0) {
-    const promptPreview = prompt?.trim().slice(0, 100) ?? "";
-    const metaTag = meta
-      ? `[${meta.engine ?? "?"}/${meta.provider ?? "-"}/${meta.size ?? "-"}/${meta.quality ?? "-"}]`
-      : "";
-    const note = [
-      `生成 ${count} 张`,
-      metaTag,
-      promptPreview ? `· ${promptPreview}` : "",
-    ].filter(Boolean).join(" ");
-    await db.from("credit_transactions").insert({
-      user_id: userId,
-      type: "generation",
-      credits_delta: -count,
-      note,
-    });
-  }
-
-  return newBalance;
+  return data as number;
 }
 
 export async function refundCredits(userId: string, count: number): Promise<void> {
-  const db = getSupabase();
   let lastError: string | null = null;
 
-  // 3 次指数退避重试：第 1 次 0ms / 第 2 次 200ms / 第 3 次 400ms。
-  // 退款是承诺给用户的事，绝不能静默失败。
+  // 3 次指数退避：0ms / 200ms / 400ms。退款是承诺给用户的事，绝不能静默失败。
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) {
       await new Promise(r => setTimeout(r, 200 * 2 ** (attempt - 1)));
     }
-    const { error } = await db.rpc("add_credits", {
+    const { error } = await getSupabase().rpc("add_credits", {
       p_user_id: userId,
       p_amount: count,
+      p_type: "refund",
+      p_note: `生成失败退款 ${count} 积分`,
     });
-    if (!error) {
-      // 流水记录失败不阻断退款（用户已经拿回积分了），但要打日志
-      const { error: txError } = await db.from("credit_transactions").insert({
-        user_id: userId,
-        type: "refund",
-        credits_delta: count,
-        note: `生成失败退款 ${count} 积分`,
-      });
-      if (txError) {
-        console.error(`[credits] refund tx log failed for ${userId}:`, txError.message);
-      }
-      return;
-    }
+    if (!error) return;
     lastError = error.message;
     console.warn(`[credits] refund attempt ${attempt + 1}/3 failed for ${userId}:`, error.message);
   }
@@ -137,34 +114,26 @@ export async function addCredits(
   orderId: string,
   grantedBy: string
 ): Promise<void> {
-  const db = getSupabase();
-
-  const { error } = await db.rpc("add_credits", {
+  const { error } = await getSupabase().rpc("add_credits", {
     p_user_id: userId,
     p_amount: amount,
+    p_type: "purchase",
+    p_note: `手动充值订单 ${orderId}`,
+    p_order_id: orderId,
+    p_granted_by: grantedBy,
   });
   if (error) throw new Error(`增加积分失败: ${error.message}`);
-
-  await db.from("credit_transactions").insert({
-    user_id: userId,
-    type: "purchase",
-    credits_delta: amount,
-    order_id: orderId,
-    granted_by: grantedBy,
-    note: `手动充值订单 ${orderId}`,
-  });
 }
 
 // Admin manually adjusts credits (positive or negative). Atomic via RPC; refuses
-// negative deltas that would drive balance below zero.
+// negative deltas that would drive balance below zero. 流水已在 RPC 内合并。
 export async function adminAdjustCredits(
   userId: string,
   delta: number,
   reason: string,
   adminEmail: string
 ): Promise<number> {
-  const db = getSupabase();
-  const { data, error } = await db.rpc("admin_adjust_credits", {
+  const { data, error } = await getSupabase().rpc("admin_adjust_credits", {
     p_user_id: userId,
     p_delta: delta,
     p_reason: reason,

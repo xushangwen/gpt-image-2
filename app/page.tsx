@@ -542,29 +542,31 @@ export default function HomePage() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [mobileSettingsOpen]);
 
-  /* Load from localStorage */
+  /* Load from localStorage —— Safari 私密模式、cookies 关闭都会抛 SecurityError，整段 try 包裹避免挂载崩 */
   useEffect(() => {
-    setHistory(loadHistory());
-    setRecentPrompts(loadPrompts());
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme !== null) setDark(savedTheme === "dark");
-    else setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
-    const savedProvider = localStorage.getItem(LS_PROVIDER);
-    if (savedProvider === "tuzi" || savedProvider === "yunwu") setProvider(savedProvider);
-    else if (savedProvider === "bltcy") setProvider("yunwu"); // 兼容旧值（重命名前用过线路二）
-    const savedEngine = localStorage.getItem(LS_ENGINE);
-    if (savedEngine === "openai" || (savedEngine === "gemini" && GEMINI_ENABLED)) setAiEngine(savedEngine);
-    const savedGeminiAspect = localStorage.getItem(LS_GEMINI_ASPECT);
-    if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
-    const savedGeminiQuality = localStorage.getItem(LS_GEMINI_QUALITY);
-    if (savedGeminiQuality === "auto" || savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
-      setGeminiQuality(savedGeminiQuality);
-    }
-    // 历史侧栏开关状态：默认展开，只有用户**显式**收起过（saved === "0"）才保持收起
     try {
+      setHistory(loadHistory());
+      setRecentPrompts(loadPrompts());
+      const savedTheme = localStorage.getItem("theme");
+      if (savedTheme !== null) setDark(savedTheme === "dark");
+      else setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
+      const savedProvider = localStorage.getItem(LS_PROVIDER);
+      if (savedProvider === "tuzi" || savedProvider === "yunwu") setProvider(savedProvider);
+      else if (savedProvider === "bltcy") setProvider("yunwu"); // 兼容旧值（重命名前用过线路二）
+      const savedEngine = localStorage.getItem(LS_ENGINE);
+      if (savedEngine === "openai" || (savedEngine === "gemini" && GEMINI_ENABLED)) setAiEngine(savedEngine);
+      const savedGeminiAspect = localStorage.getItem(LS_GEMINI_ASPECT);
+      if (savedGeminiAspect) setGeminiAspect(savedGeminiAspect);
+      const savedGeminiQuality = localStorage.getItem(LS_GEMINI_QUALITY);
+      if (savedGeminiQuality === "auto" || savedGeminiQuality === "low" || savedGeminiQuality === "medium" || savedGeminiQuality === "high") {
+        setGeminiQuality(savedGeminiQuality);
+      }
+      // 历史侧栏开关状态：默认展开，只有用户**显式**收起过（saved === "0"）才保持收起
       const savedHistoryOpen = localStorage.getItem(LS_HISTORY_OPEN);
       if (savedHistoryOpen === "0") setShowHistory(false);
-    } catch {}
+    } catch (err) {
+      console.warn("[init] localStorage unavailable, using defaults:", err);
+    }
     // Load full image history from IndexedDB
     void idbLoadVersions().then(v => { if (v.length > 0) setVersions(v); });
   }, []);
@@ -1009,6 +1011,8 @@ export default function HomePage() {
   }, [showToast]);
 
   const restoreHistory = useCallback((entry: HistoryEntry) => {
+    // 先同步引擎：从 OpenAI 视图点 Gemini 历史时，UI 必须跟着切换，否则 quality / aspect 错位
+    if (entry.engine === "gemini" || entry.engine === "openai") setAiEngine(entry.engine);
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
     if (entry.engine === "gemini") setGeminiQuality(entry.quality as Quality);
@@ -1031,6 +1035,7 @@ export default function HomePage() {
   }, [versions, clearImages]);
 
   const restoreVersion = useCallback((entry: VersionEntry) => {
+    if (entry.engine === "gemini" || entry.engine === "openai") setAiEngine(entry.engine);
     setImages(entry.images);
     setPrompt(entry.prompt);
     setAspect(entry.aspect);
@@ -1276,7 +1281,7 @@ export default function HomePage() {
                     ref={promptRef}
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
-                    onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+                    onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); handleGenerate(); } }}
                     onFocus={() => { if (recentPrompts.length > 0) setShowPromptHistory(true); }}
                     onBlur={() => {
                       // dropdown 内的 mousedown 已 preventDefault 阻止失焦；此处只在点击外部时关闭
@@ -1873,7 +1878,7 @@ export default function HomePage() {
         <textarea
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
+          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); handleGenerate(); } }}
           placeholder="描述你想生成的图像..."
           rows={3}
           maxLength={4000}

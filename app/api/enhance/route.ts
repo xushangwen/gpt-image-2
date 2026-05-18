@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { HttpError } from "@/lib/errors";
 import { acquireThrottleLock } from "@/lib/locks";
-import { getCreditsOnly, refundCredits } from "@/lib/credits";
-import { getSupabase } from "@/lib/supabase";
+import { getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
 
 export const maxDuration = 60;
 export const preferredRegion = "iad1";
@@ -151,11 +150,15 @@ export async function POST(req: NextRequest) {
       throw new HttpError(`Prompt 不能超过 ${MAX_PROMPT_LENGTH} 个字符`, 400);
     }
 
-    // 参考图大小校验（base64 ≈ 原始字节 × 4/3）
+    // 参考图大小 + 类型校验（base64 ≈ 原始字节 × 4/3）
+    // 必须在扣分之前完成，避免非法上传走"扣→退"无谓 round-trip
     if (referenceImage?.data) {
       const byteLength = Math.floor(referenceImage.data.length * 0.75);
       if (byteLength > MAX_REFERENCE_BYTES) {
         throw new HttpError("参考图不能超过 10 MB", 400);
+      }
+      if (referenceImage.mediaType && !ALLOWED_REFERENCE_MEDIA_TYPES.has(referenceImage.mediaType)) {
+        throw new HttpError("参考图类型不支持", 400);
       }
     }
 
@@ -165,21 +168,13 @@ export async function POST(req: NextRequest) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
 
-    // 先扣后调上游，失败退款（与 /api/generate 一致）
-    const db = getSupabase();
-    const { data: deductResult, error: deductErr } = await db.rpc("deduct_credits", {
-      p_user_id: userId,
-      p_count: ENHANCE_COST,
+    // 先扣后调上游，失败退款（与 /api/generate 一致）。流水写入已合并进 RPC
+    const newBalance = await deductCredits(userId, ENHANCE_COST, prompt, {
+      provider: config.provider,
+      action: "enhance",
     });
-    if (deductErr) throw new HttpError(`扣除积分失败: ${deductErr.message}`, 500);
-    if ((deductResult as number) < 0) throw new HttpError("积分不足，请购买套餐", 402);
+    if (newBalance < 0) throw new HttpError("积分不足，请购买套餐", 402);
     deducted = true;
-    await db.from("credit_transactions").insert({
-      user_id: userId,
-      type: "enhance",
-      credits_delta: -ENHANCE_COST,
-      note: `提示词优化 · ${prompt.trim().slice(0, 60)}`,
-    });
 
     const contextLines = [
       referenceImage?.data
@@ -194,9 +189,6 @@ export async function POST(req: NextRequest) {
     const userContent: ContentPart[] = [];
 
     if (referenceImage?.data && referenceImage?.mediaType) {
-      if (!ALLOWED_REFERENCE_MEDIA_TYPES.has(referenceImage.mediaType)) {
-        throw new HttpError("参考图类型不支持", 400);
-      }
       userContent.push({
         type: "image_url",
         image_url: { url: `data:${normalizeMediaType(referenceImage.mediaType)};base64,${referenceImage.data}` },

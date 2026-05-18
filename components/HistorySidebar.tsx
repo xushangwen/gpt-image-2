@@ -28,7 +28,12 @@ export default function HistorySidebar({
 }: Props) {
   return (
     <aside
+      className="layout-history-sidebar"
       aria-hidden={!open}
+      // 收起时同时禁用键盘可触达，否则隐藏的按钮仍可 Tab
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error inert is HTML attribute supported in React 19
+      inert={!open ? "" : undefined}
       style={{
         width: open ? 320 : 0,
         flexShrink: 0,

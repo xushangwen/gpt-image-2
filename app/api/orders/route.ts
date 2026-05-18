@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
     const order = await createOrder(userId, email, package_id as PackageId);
     return NextResponse.json({ order_id: order.id, package_id, email });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // 内部错误细节进 server log；前端只看通用文案，不泄漏 DB / Clerk 原始错误
+    console.error("[orders] create failed:", err);
+    return NextResponse.json({ error: "创建订单失败，请稍后重试" }, { status: 500 });
   }
 }

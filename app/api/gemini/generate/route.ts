@@ -121,9 +121,9 @@ async function callGemini(
     );
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Gemini 图像生成请求超时，请稍后重试");
+      throw new HttpError("生成超时，请稍后重试（积分已自动退还）", 504);
     }
-    throw err;
+    throw new HttpError("网络异常，请检查连接后重试", 502);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -131,25 +131,32 @@ async function callGemini(
   const rawText = await response.text();
   console.info("[gemini/generate] upstream status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
 
+  // 上游 4xx/5xx：原始 error.message 进日志，不暴露给前端（避免泄漏 API key / 配额提示等内部信息）
   if (!response.ok) {
-    let message = `Gemini API 错误 ${response.status}`;
-    try {
-      const errJson: GeminiResponse = JSON.parse(rawText);
-      message = errJson.error?.message ?? message;
-    } catch {}
-    throw new Error(message);
+    console.error(`[gemini/generate] upstream ${response.status}: ${rawText.slice(0, 200)}`);
+    if (response.status === 401 || response.status === 403) {
+      throw new HttpError("服务配置异常，请联系管理员", 502);
+    }
+    if (response.status === 429) {
+      throw new HttpError("请求过于频繁，请等待几秒后重试", 502);
+    }
+    if (response.status >= 500) {
+      throw new HttpError("Gemini 服务暂时不可用，请稍后重试", 502);
+    }
+    throw new HttpError("生成失败，请稍后重试", 502);
   }
 
   let data: GeminiResponse;
   try {
     data = JSON.parse(rawText);
   } catch {
-    throw new Error("Gemini API 返回了无法解析的数据");
+    throw new HttpError("生成失败，请稍后重试", 502);
   }
 
   // 200 响应体内仍可能嵌有 error 字段
   if (data.error) {
-    throw new Error(data.error.message ?? `Gemini API 错误 (code=${data.error.code ?? "unknown"})`);
+    console.error(`[gemini/generate] 200 body error:`, data.error);
+    throw new HttpError("生成失败，请稍后重试", 502);
   }
 
   const candidate = data.candidates?.[0];
@@ -175,22 +182,24 @@ async function callGemini(
     }
   }
 
-  // 构造有意义的错误信息
+  // 构造有意义的错误信息（内部细节进日志，前端只看友好文案）
   if (blockReason) {
-    throw new Error(`内容被安全过滤拦截 (blockReason=${blockReason})`);
+    console.warn(`[gemini/generate] blocked: ${blockReason}`);
+    throw new HttpError("内容未通过安全审查，请修改提示词后再试", 400);
   }
   if (finishReason && finishReason !== "STOP") {
-    throw new Error(`Gemini 未完成图像生成 (finishReason=${finishReason})`);
+    console.warn(`[gemini/generate] unexpected finishReason: ${finishReason}`);
+    throw new HttpError("生成失败，请稍后重试", 502);
   }
   if (!data.candidates?.length) {
-    throw new Error("Gemini 返回空 candidates，请检查 API Key 权限或账户配额");
+    console.error("[gemini/generate] empty candidates");
+    throw new HttpError("生成失败，请稍后重试", 502);
   }
-  // 如果有文字内容，提取前 120 字作为线索
   const textHint = parts2.find(p => p.text)?.text?.slice(0, 80);
   if (textHint) {
-    throw new Error(`Gemini 返回文字而非图像（请确认模型支持图像生成）`);
+    console.warn(`[gemini/generate] text-only response: ${textHint}`);
   }
-  throw new Error("Gemini API 未返回图像，请检查 API Key 和模型配置");
+  throw new HttpError("生成失败，请稍后重试", 502);
 }
 
 export async function POST(req: NextRequest) {
