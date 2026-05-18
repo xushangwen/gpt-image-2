@@ -552,6 +552,8 @@ async function editOneViaGenerationsEndpoint(
     size,
     response_format: "b64_json",
     n: 1,
+    output_format: "jpeg",
+    output_compression: 85,
     [config.referenceImageField]: referenceImageToDataUrl(referenceImage),
   };
   // 仅对支持 quality 的模型（如 dall-e-3）传该字段；gpt-image-* 不接受会被中转商拒绝
@@ -598,6 +600,8 @@ async function editOneViaImagesEndpoint(
     appendIfDefined(formData, "quality", getReferenceQuality(config, quality));
   }
   appendIfDefined(formData, "response_format", "b64_json");
+  appendIfDefined(formData, "output_format", "jpeg");
+  appendIfDefined(formData, "output_compression", 85);
   formData.append(config.referenceImageField, file);
 
   return withRetry(config.provider, config, async (cfg) => {
@@ -716,6 +720,12 @@ export async function POST(req: NextRequest) {
       size: upstreamSize,
       response_format: "b64_json",
       n: 1,
+      // 国内用户跨境拉 vercel(hkg1) 时，PNG base64 单张 4-7MB，下行常常 40-70s。
+      // OpenAI gpt-image-2 原生支持 output_format=jpeg + output_compression，
+      // 体积可砍到 1.2-2MB（视觉无损 85），下行时间减半。
+      // 参考：https://developers.openai.com/api/docs/guides/image-generation
+      output_format: "jpeg",
+      output_compression: 85,
     };
     // 仅对支持 quality 的模型（如 dall-e-3）传 quality；gpt-image-2 中转商不接受会报 400
     if (QUALITY_SUPPORTED_MODELS.has(config.model)) {
