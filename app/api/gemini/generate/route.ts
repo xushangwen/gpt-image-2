@@ -256,7 +256,12 @@ export async function POST(req: NextRequest) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
 
-    const newBalance = await deductCredits(userId, count);
+    const newBalance = await deductCredits(userId, count, prompt, {
+      engine: "gemini",
+      provider: "gemini",
+      size: sizeStr,
+      quality,
+    });
     if (newBalance < 0) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }

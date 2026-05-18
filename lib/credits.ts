@@ -61,7 +61,13 @@ export async function getCreditsOnly(userId: string): Promise<number | null> {
 }
 
 // Returns new balance, or -1 if insufficient credits
-export async function deductCredits(userId: string, count: number): Promise<number> {
+// prompt 摘要会被记入 credit_transactions.note，便于事后溯源（精准判断"是不是同一次操作扣了两次"）
+export async function deductCredits(
+  userId: string,
+  count: number,
+  prompt?: string,
+  meta?: { engine?: string; provider?: string; size?: string; quality?: string }
+): Promise<number> {
   const db = getSupabase();
   const { data, error } = await db.rpc("deduct_credits", {
     p_user_id: userId,
@@ -72,11 +78,20 @@ export async function deductCredits(userId: string, count: number): Promise<numb
   const newBalance = data as number;
 
   if (newBalance >= 0) {
+    const promptPreview = prompt?.trim().slice(0, 100) ?? "";
+    const metaTag = meta
+      ? `[${meta.engine ?? "?"}/${meta.provider ?? "-"}/${meta.size ?? "-"}/${meta.quality ?? "-"}]`
+      : "";
+    const note = [
+      `生成 ${count} 张`,
+      metaTag,
+      promptPreview ? `· ${promptPreview}` : "",
+    ].filter(Boolean).join(" ");
     await db.from("credit_transactions").insert({
       user_id: userId,
       type: "generation",
       credits_delta: -count,
-      note: `生成 ${count} 张图片`,
+      note,
     });
   }
 

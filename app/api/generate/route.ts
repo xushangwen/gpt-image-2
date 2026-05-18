@@ -9,7 +9,7 @@ import { HttpError } from "@/lib/errors";
 export const maxDuration = 300;
 
 type ImageResult = { b64?: string; url?: string; mediaType: string };
-type ProviderName = "tuzi" | "bltcy" | "custom";
+type ProviderName = "tuzi" | "yunwu" | "custom";
 type ReferenceEndpointKind = "chat-completions" | "images-edits" | "images-generations";
 type SizeFormat = "pixel" | "ratio";
 type GenerateConfig = {
@@ -44,9 +44,8 @@ const PROVIDER_PRESETS: Record<Exclude<ProviderName, "custom">, {
     referenceQuality: "",
     sizeFormat: "ratio",
   },
-  // 线路二槽位：当前指向 yunwu.ai，OpenAI 兼容接口
-  // （历史命名为 bltcy，保留代码标识稳定，env / UI desc 已切换为云雾）
-  bltcy: {
+  // 线路二：yunwu.ai（云雾，OpenAI 兼容接口）
+  yunwu: {
     apiEndpoint: "https://yunwu.ai/v1/images/generations",
     referenceEndpoint: "https://yunwu.ai/v1/images/edits",
     referenceImageField: "image",
@@ -74,7 +73,7 @@ const MAX_GENERATE_ATTEMPTS = 2;
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
-  if (provider === "tuzi" || provider === "bltcy" || provider === "custom") return provider;
+  if (provider === "tuzi" || provider === "yunwu" || provider === "custom") return provider;
   throw new HttpError(`不支持的图像中转配置：${provider}`, 500);
 }
 
@@ -311,7 +310,7 @@ function imageFromString(value: string): ImageResult | null {
   return null;
 }
 
-// 部分中转（如 bltcy）的 b64_json 字段返回完整 data URL（data:image/png;base64,<data>）
+// 部分中转的 b64_json 字段返回完整 data URL（data:image/png;base64,<data>）
 // 而非纯 base64，此函数统一提取出纯 base64 并去除 MIME 换行
 function normalizeB64(rawB64: string, fallbackMediaType: string): { b64: string; mediaType: string } {
   const dataUrlMatch = rawB64.match(/^data:(image\/[a-z0-9.+\-]+);base64,/i);
@@ -695,7 +694,7 @@ export async function POST(req: NextRequest) {
     const raw = await readJson(req);
     const { prompt, size = "1024x1024", quality = "high", n = 1, referenceImage } = raw;
     const reqProvider: ProviderName | undefined =
-      raw.provider === "tuzi" || raw.provider === "bltcy" ? raw.provider : undefined;
+      raw.provider === "tuzi" || raw.provider === "yunwu" ? raw.provider : undefined;
     const config = getConfig(reqProvider);
     const parsedReferenceImage = parseReferenceImage(referenceImage);
 
@@ -724,11 +723,16 @@ export async function POST(req: NextRequest) {
       creditsRemaining = credits.credits_remaining;
     }
 
-    const newBalance = await deductCredits(userId, count);
+    const newBalance = await deductCredits(userId, count, prompt, {
+      engine: "openai",
+      provider: config.provider,
+      size,
+      quality,
+    });
     if (newBalance < 0) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
-    console.log(`[generate ${traceId}] DEDUCT count=${count} provider=${config.provider} model=${config.model} size=${size} quality=${quality} balance=${newBalance}`);
+    console.log(`[generate ${traceId}] DEDUCT count=${count} provider=${config.provider} model=${config.model} size=${size} quality=${quality} balance=${newBalance} prompt="${prompt.slice(0, 40)}"`);
 
     const upstreamSize = getProviderSize(config, size);
     const baseBody: Record<string, unknown> = {

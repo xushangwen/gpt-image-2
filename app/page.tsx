@@ -93,9 +93,8 @@ const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
 const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
 const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
-  tuzi: { name: "线路一", desc: "兔子中转" },
-  // 历史命名为 bltcy，当前实际指向 yunwu.ai；UI 已切换为「云雾」
-  bltcy: { name: "线路二", desc: "云雾" },
+  tuzi:  { name: "线路一", desc: "兔子中转" },
+  yunwu: { name: "线路二", desc: "云雾（推荐）" },
 };
 
 /* ── Utils ── */
@@ -416,7 +415,7 @@ export default function HomePage() {
   const [count, setCount] = useState(1);
   const [dark, setDark] = useState(true);
   // 默认线路二（yunwu，速度更快）；localStorage 有旧值的用户保持原选
-  const [provider, setProvider] = useState<ProviderChoice>("bltcy");
+  const [provider, setProvider] = useState<ProviderChoice>("yunwu");
   const [aiEngine, setAiEngine] = useState<AIEngine>("openai");
   const [loading, setLoading] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -473,7 +472,8 @@ export default function HomePage() {
     if (savedTheme !== null) setDark(savedTheme === "dark");
     else setDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
     const savedProvider = localStorage.getItem(LS_PROVIDER);
-    if (savedProvider === "tuzi" || savedProvider === "bltcy") setProvider(savedProvider);
+    if (savedProvider === "tuzi" || savedProvider === "yunwu") setProvider(savedProvider);
+    else if (savedProvider === "bltcy") setProvider("yunwu"); // 兼容旧值（重命名前用过线路二）
     const savedEngine = localStorage.getItem(LS_ENGINE);
     if (savedEngine === "openai" || (savedEngine === "gemini" && GEMINI_ENABLED)) setAiEngine(savedEngine);
     const savedGeminiAspect = localStorage.getItem(LS_GEMINI_ASPECT);
@@ -1007,9 +1007,9 @@ export default function HomePage() {
           {/* 线路切换（仅 OpenAI 模式可见） */}
           {aiEngine === "openai" && (
             <div className="ck-segmented ck-segmented--header header-provider-seg" style={{ display: "flex", borderRadius: 8, overflow: "visible" }}>
-              {(["tuzi", "bltcy"] as const).map((p) => {
+              {(["tuzi", "yunwu"] as const).map((p) => {
                 const active = provider === p;
-                const recommended = p === "bltcy";
+                const recommended = p === "yunwu";
                 return (
                   <button
                     key={p}
@@ -1025,7 +1025,7 @@ export default function HomePage() {
                       fontSize: 11,
                       fontFamily: "var(--font-space)",
                       border: "none",
-                      borderLeft: p === "bltcy" ? "1px solid var(--border-soft)" : "none",
+                      borderLeft: p === "yunwu" ? "1px solid var(--border-soft)" : "none",
                       background: "transparent",
                       color: active ? "#fff" : "var(--text-muted)",
                       cursor: "pointer",
@@ -1790,7 +1790,7 @@ export default function HomePage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
               <SideLabel icon="ri-route-line">线路</SideLabel>
               <div className="ck-segmented" style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)" }}>
-                {(["tuzi", "bltcy"] as const).map((p, i) => {
+                {(["tuzi", "yunwu"] as const).map((p, i) => {
                   const active = provider === p;
                   return (
                     <button key={p} data-active={active} onClick={() => setProvider(p)} title={PROVIDER_LABELS[p].desc} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>

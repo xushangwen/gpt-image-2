@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-const providers = new Set(["tuzi", "bltcy"]);
+const providers = new Set(["tuzi", "yunwu"]);
 const provider = process.argv[2];
 
 function redactEnv(text) {
@@ -16,7 +16,7 @@ function redactEnv(text) {
 }
 
 if (!provider || !providers.has(provider)) {
-  console.error("用法：node scripts/switch-provider.mjs <tuzi|bltcy>");
+  console.error("用法：node scripts/switch-provider.mjs <tuzi|yunwu>");
   process.exit(1);
 }
 

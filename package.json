@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "provider:tuzi": "node scripts/switch-provider.mjs tuzi",
-    "provider:bltcy": "node scripts/switch-provider.mjs bltcy"
+    "provider:yunwu": "node scripts/switch-provider.mjs yunwu"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.7",

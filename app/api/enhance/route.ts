@@ -6,16 +6,16 @@ export const maxDuration = 60;
 export const preferredRegion = "iad1";
 
 const ENHANCE_TIMEOUT_MS = 30_000;
-type ProviderName = "tuzi" | "bltcy" | "custom";
+type ProviderName = "tuzi" | "yunwu" | "custom";
 
 const PROVIDER_CHAT_ENDPOINTS: Record<Exclude<ProviderName, "custom">, string> = {
   tuzi: "https://api.tu-zi.com/v1/chat/completions",
-  bltcy: "https://api.bltcy.ai/v1/chat/completions",
+  yunwu: "https://yunwu.ai/v1/chat/completions",
 };
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
-  if (provider === "tuzi" || provider === "bltcy" || provider === "custom") return provider;
+  if (provider === "tuzi" || provider === "yunwu" || provider === "custom") return provider;
   throw new HttpError(`不支持的图像中转配置：${provider}`, 500);
 }
 
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
 
     const { prompt, aspect = "auto", quality = "high", referenceImage } = body;
     const reqProvider: ProviderName | undefined =
-      body.provider === "tuzi" || body.provider === "bltcy" ? body.provider : undefined;
+      body.provider === "tuzi" || body.provider === "yunwu" ? body.provider : undefined;
     const config = getConfig(reqProvider);
 
     if (typeof prompt !== "string" || !prompt.trim()) {
