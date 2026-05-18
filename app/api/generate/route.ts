@@ -64,12 +64,15 @@ const SIZE_TO_RATIO: Record<string, string> = {
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
-// gpt-image-2 + 中转排队场景下 90s 不够；150s 与 Gemini 路径对齐
-const UPSTREAM_TIMEOUT_MS = 150_000;
+// gpt-image-2 + yunwu 实测 130-180s。150s 阈值会误杀 149s 才完成的请求
+// （事故：客户端已 timeout abort，但上游已完成生图并扣 token，钱白花）。
+// 拉到 270s 给响应/退款留 30s 余量，仍在 Vercel maxDuration=300s 内。
+const UPSTREAM_TIMEOUT_MS = 270_000;
 // 本项目只用 gpt-image-2。按 OpenAI 官方支持 low/medium/high/auto。
 const QUALITY_SUPPORTED_MODELS = new Set(["gpt-image-2"]);
-// 单次生图最多重试一次（共两次尝试），换 key 后再试
-const MAX_GENERATE_ATTEMPTS = 2;
+// 生图请求一旦发到上游，服务端 Abort/超时不保证能取消上游后台任务。
+// 自动重试会造成“前端失败，但上游继续出图并重复扣费”，所以这里禁止自动重试。
+const MAX_GENERATE_ATTEMPTS = 1;
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();

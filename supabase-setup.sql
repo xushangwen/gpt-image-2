@@ -57,16 +57,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS credit_transactions_purchase_order_idx
 ON credit_transactions(order_id, type)
 WHERE order_id IS NOT NULL AND type = 'purchase';
 
+-- 4.1 生图互斥锁表：阻止同一用户同时存在多个上游生图任务
+CREATE TABLE IF NOT EXISTS active_generations (
+  user_id    TEXT PRIMARY KEY,
+  locked_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
 -- 5. 启用行级安全
 ALTER TABLE user_credits        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE packages            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_generations  ENABLE ROW LEVEL SECURITY;
 
 -- 所有访问通过 service_role key（服务端），直接拒绝匿名访问
 CREATE POLICY "deny_anon_user_credits"        ON user_credits        FOR ALL TO anon USING (false);
 CREATE POLICY "deny_anon_orders"              ON orders              FOR ALL TO anon USING (false);
 CREATE POLICY "deny_anon_transactions"        ON credit_transactions FOR ALL TO anon USING (false);
+CREATE POLICY "deny_anon_active_generations"  ON active_generations  FOR ALL TO anon USING (false);
 -- packages 允许匿名读取（展示套餐时可能用到）
 CREATE POLICY "public_read_packages"          ON packages            FOR SELECT USING (true);
 
@@ -113,6 +122,44 @@ BEGIN
   WHERE user_id = p_user_id;
 
   RETURN (SELECT credits_remaining FROM user_credits WHERE user_id = p_user_id);
+END;
+$$;
+
+-- 7.1 原子获取生图锁。会先清理过期锁，再尝试插入当前用户锁。
+CREATE OR REPLACE FUNCTION acquire_generation_lock(
+  p_user_id TEXT,
+  p_ttl_seconds INTEGER DEFAULT 300
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_inserted INTEGER;
+BEGIN
+  DELETE FROM active_generations
+  WHERE expires_at < NOW();
+
+  INSERT INTO active_generations (user_id, locked_at, expires_at)
+  VALUES (p_user_id, NOW(), NOW() + make_interval(secs => p_ttl_seconds))
+  ON CONFLICT (user_id) DO NOTHING;
+
+  GET DIAGNOSTICS v_inserted = ROW_COUNT;
+  RETURN v_inserted = 1;
+END;
+$$;
+
+-- 7.2 释放生图锁。
+CREATE OR REPLACE FUNCTION release_generation_lock(p_user_id TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM active_generations
+  WHERE user_id = p_user_id;
 END;
 $$;
 

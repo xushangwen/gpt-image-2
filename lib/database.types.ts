@@ -105,6 +105,23 @@ export type Database = {
         };
         Relationships: [];
       };
+      active_generations: {
+        Row: {
+          user_id: string;
+          locked_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          user_id: string;
+          locked_at?: string;
+          expires_at: string;
+        };
+        Update: {
+          locked_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

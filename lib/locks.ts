@@ -7,7 +7,7 @@ import { getSupabase } from "./supabase";
  * 设计：
  * - 通过 active_generations 表的主键 user_id 实现互斥
  * - acquire RPC 内置过期清理 + ON CONFLICT DO NOTHING，原子返回是否成功
- * - 失败时 fail-open（允许生图）以避免锁机制本身把功能拦死，但打 error 日志
+ * - 失败时 fail-closed（拒绝生图），避免锁失效时同一用户并发扣费
  */
 
 export async function acquireGenerationLock(
@@ -20,13 +20,13 @@ export async function acquireGenerationLock(
       p_ttl_seconds: ttlSeconds,
     });
     if (error) {
-      console.error("[lock] acquire failed (fail-open):", error.message);
-      return true;
+      console.error("[lock] acquire failed (fail-closed):", error.message);
+      return false;
     }
     return data === true;
   } catch (err) {
-    console.error("[lock] acquire exception (fail-open):", err);
-    return true;
+    console.error("[lock] acquire exception (fail-closed):", err);
+    return false;
   }
 }
 
