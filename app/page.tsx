@@ -9,7 +9,7 @@ import Spinner from "@/components/ui/Spinner";
 import Button from "@/components/ui/Button";
 import GeneratingCard from "@/components/GeneratingCard";
 import Lightbox from "@/components/Lightbox";
-import HistoryPanel from "@/components/HistoryPanel";
+import HistoryDrawer from "@/components/HistoryDrawer";
 import { formatTime } from "@/lib/format";
 import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry } from "@/lib/types";
 
@@ -1026,6 +1026,36 @@ export default function HomePage() {
             </div>
           )}
           <CreditBadge />
+          {/* 历史抽屉触发按钮 */}
+          <Button
+            variant="icon"
+            onClick={() => setShowHistory(true)}
+            title={`生成历史${history.length > 0 ? `（${history.length}）` : ""}`}
+            style={{ position: "relative" }}
+          >
+            <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1 }} />
+            {history.length > 0 && (
+              <span style={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                minWidth: 14,
+                height: 14,
+                padding: "0 4px",
+                borderRadius: 999,
+                background: "var(--accent)",
+                color: "var(--btn-text)",
+                fontSize: 9,
+                fontFamily: "var(--font-space)",
+                fontWeight: 600,
+                lineHeight: "14px",
+                textAlign: "center",
+                pointerEvents: "none",
+              }}>
+                {history.length > 99 ? "99+" : history.length}
+              </span>
+            )}
+          </Button>
           <Button
             variant="icon"
             onClick={() => setDark(d => !d)}
@@ -1263,16 +1293,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* History */}
-            <HistoryPanel
-              history={history}
-              showHistory={showHistory}
-              onToggle={() => setShowHistory(h => !h)}
-              onRestore={restoreHistory}
-              onDelete={deleteHistoryEntry}
-              onClear={clearAllHistory}
-              sidebarSectionStyle={sidebarSectionStyle}
-            />
+            {/* 历史已迁移到顶部历史按钮 → 右侧抽屉，sidebar 不再放历史 */}
           </div>
 
           {/* Generate Button */}
@@ -1791,59 +1812,20 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* History (mobile settings) */}
-          {history.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-              <button
-                onClick={() => setShowHistory(h => !h)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-              >
-                <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                  <i className="ri-history-line" style={{ fontSize: 16, lineHeight: 1, fontWeight: 400, color: "var(--text-secondary)" }} /> 历史 ({history.length})
-                </span>
-                <i className={showHistory ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
-              </button>
-              {showHistory && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {history.slice(0, 10).map(entry => (
-                    <div
-                      key={entry.id}
-                      className="history-item ck-data-row"
-                      style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
-                      onClick={() => { restoreHistory(entry); setMobileSettingsOpen(false); }}
-                    >
-                      {entry.thumbnail && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={entry.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, flexShrink: 0 }} />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 12, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 2 }}>{entry.prompt}</p>
-                        <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                          {entry.versionLabel ? `${entry.versionLabel} · ` : ""}{formatTime(entry.timestamp)} · {entry.imageCount} 张
-                        </p>
-                      </div>
-                      <button
-                        className="delete-btn"
-                        onClick={e => { e.stopPropagation(); deleteHistoryEntry(entry.id); }}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 3, flexShrink: 0 }}
-                      >
-                        <i className="ri-close-line" style={{ fontSize: 16, lineHeight: 1 }} />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    onClick={clearAllHistory}
-                    style={{ fontSize: 11, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "3px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
-                  >
-                    <i className="ri-delete-bin-6-line" style={{ fontSize: 14, lineHeight: 1 }} /> 清空历史
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+          {/* 历史已迁移到顶部历史按钮 → 右侧抽屉，mobile 设置面板不再放 */}
         </div>
         </div>{/* end inner wrapper */}
       </div>
+
+      {/* ── 历史抽屉 ── */}
+      <HistoryDrawer
+        history={history}
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        onRestore={restoreHistory}
+        onDelete={deleteHistoryEntry}
+        onClear={clearAllHistory}
+      />
 
       {/* ── Lightbox ── */}
       {lightboxIdx !== null && images[lightboxIdx] && (
