@@ -92,10 +92,23 @@ const MAX_PROMPTS = 15;
 const GEMINI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_GEMINI === "true";
 const MAX_REFERENCE_SIZE = 20 * 1024 * 1024;
 
-const PROVIDER_LABELS: Record<ProviderChoice, { name: string; desc: string }> = {
-  tuzi:  { name: "线路一", desc: "兔子中转" },
-  yunwu: { name: "线路二", desc: "云雾（推荐）" },
+// 不暴露中转商名字（进货渠道，对用户屏蔽）
+const PROVIDER_LABELS: Record<ProviderChoice, { name: string; recommended: boolean }> = {
+  tuzi:  { name: "线路一", recommended: false },
+  yunwu: { name: "线路二", recommended: true },
 };
+
+// 稳定性评分（5 分制，支持 0.5），用户场景实测经验值
+const PROVIDER_STABILITY: Record<ProviderChoice, { score: number; hint: string }> = {
+  tuzi:  { score: 2.0, hint: "近期不稳定，建议切换到线路二" },
+  yunwu: { score: 4.5, hint: "当前最稳定，推荐使用" },
+};
+
+function stabilityColor(score: number): string {
+  if (score >= 4) return "#4ade80"; // 绿
+  if (score >= 3) return "#fbbf24"; // 黄
+  return "#f87171";                 // 红
+}
 
 /* ── Utils ── */
 function imageSrc(img: ImageResult): string | undefined {
@@ -1014,7 +1027,7 @@ export default function HomePage() {
                   <button
                     key={p}
                     onClick={() => setProvider(p)}
-                    title={recommended ? `${PROVIDER_LABELS[p].desc}（推荐）` : PROVIDER_LABELS[p].desc}
+                    title={`${PROVIDER_LABELS[p].name}${PROVIDER_LABELS[p].recommended ? "（推荐）" : ""} · ${PROVIDER_STABILITY[p].hint}`}
                     data-active={active}
                     style={{
                       display: "inline-flex",
@@ -1321,6 +1334,30 @@ export default function HomePage() {
 
           {/* Generate Button */}
           <div className="layout-sidebar__footer" style={{ padding: "14px", borderTop: "1px solid var(--border)", flexShrink: 0 }}>
+            {/* 线路稳定性指示器 */}
+            {aiEngine === "openai" && (() => {
+              const stab = PROVIDER_STABILITY[provider];
+              const color = stabilityColor(stab.score);
+              return (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "7px 10px",
+                  marginBottom: 8,
+                  borderRadius: 8,
+                  border: `1px solid ${color}44`,
+                  background: `${color}11`,
+                }}>
+                  <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <i className="ri-pulse-line" style={{ fontSize: 13, color, lineHeight: 1 }} />
+                    {PROVIDER_LABELS[provider].name}稳定性
+                  </span>
+                  <StabilityBars score={stab.score} color={color} />
+                </div>
+              );
+            })()}
+
             {/* 安抚提示 */}
             <div style={{
               display: "flex",
@@ -1337,9 +1374,15 @@ export default function HomePage() {
             }}>
               <i className="ri-information-line" style={{ fontSize: 13, color: "#fb923c", lineHeight: 1.55, flexShrink: 0 }} />
               <span>
-                AI 生图依赖第三方服务，偶有不稳定 ·
+                AI 生图依赖第三方，偶有不稳定 ·
                 <strong style={{ color: "var(--text-secondary)", margin: "0 2px" }}>失败积分自动返还</strong>
                 · 排队请勿刷新
+                {provider === "tuzi" && (
+                  <>
+                    <br />
+                    <span style={{ color: "#f87171" }}>· 当前线路稳定性较低，建议切换线路二</span>
+                  </>
+                )}
               </span>
             </div>
 
@@ -1591,7 +1634,9 @@ export default function HomePage() {
                   color: "var(--text-muted)",
                 }}>
                   <i className="ri-shield-check-line" style={{ fontSize: 13, color: "#fb923c" }} />
-                  <span>线路偶有不稳定，<strong style={{ color: "var(--text-secondary)" }}>失败积分自动返还</strong>，请放心使用</span>
+                  <span>
+                    线路偶有不稳定，<strong style={{ color: "var(--text-secondary)" }}>失败积分自动返还</strong>，请放心使用
+                  </span>
                 </div>
               </div>
             </div>
@@ -1793,7 +1838,7 @@ export default function HomePage() {
                 {(["tuzi", "yunwu"] as const).map((p, i) => {
                   const active = provider === p;
                   return (
-                    <button key={p} data-active={active} onClick={() => setProvider(p)} title={PROVIDER_LABELS[p].desc} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                    <button key={p} data-active={active} onClick={() => setProvider(p)} title={`${PROVIDER_LABELS[p].name}${PROVIDER_LABELS[p].recommended ? "（推荐）" : ""} · ${PROVIDER_STABILITY[p].hint}`} style={{ ...segBtn(active), borderLeft: i === 0 ? "none" : "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
                       <span style={{ color: active ? "#fff" : "currentColor" }}>{PROVIDER_LABELS[p].name}</span>
                     </button>
                   );
@@ -1939,6 +1984,44 @@ function GeminiAspectGrid({ value, onChange }: { value: string; onChange: (v: st
 }
 
 /* ── Sidebar label helper ── */
+// 5 格稳定性指示器，支持半格（score 1-5，0.5 step）
+function StabilityBars({ score, color }: { score: number; color: string }) {
+  return (
+    <div style={{ display: "flex", gap: 2 }} aria-label={`稳定性 ${score}/5`}>
+      {[1, 2, 3, 4, 5].map(i => {
+        const full = score >= i;
+        const half = !full && score >= i - 0.5;
+        const bg = full ? color : "transparent";
+        return (
+          <div
+            key={i}
+            style={{
+              width: 5,
+              height: 12,
+              borderRadius: 1.5,
+              border: `1px solid ${full || half ? color : "var(--border)"}`,
+              background: bg,
+              position: "relative",
+              overflow: "hidden",
+            }}
+          >
+            {half && (
+              <div style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: "50%",
+                background: color,
+              }} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SideLabel({ children, icon }: { children: React.ReactNode; icon?: string }) {
   return (
     <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", letterSpacing: "0.04em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
