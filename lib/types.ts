@@ -23,3 +23,15 @@ export type VersionEntry = HistoryEntry & {
   images: ImageResult[];
   referenceThumbnail?: string;
 };
+
+export type ReferenceImage = {
+  name: string;
+  dataUrl: string;
+  thumbnail: string;
+  mediaType: string;
+  size: number;
+  width: number;
+  height: number;
+};
+
+export type ToastType = "success" | "error" | "warning";

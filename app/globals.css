@@ -1619,10 +1619,8 @@ html body .cl-formButtonPrimary[data-variant="solid"][data-color="primary"] {
     display: none !important;
   }
 
-  .img-grid,
-  .img-grid-loading {
-    max-width: 100% !important;
-  }
+  /* 移动端的 .img-grid maxWidth 由 page.tsx 用 min(Npx, 100%) 直接收缩，
+     无需在此处用 !important 覆盖 */
 
   .img-actions {
     flex-wrap: wrap;

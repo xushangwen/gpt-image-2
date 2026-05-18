@@ -12,19 +12,7 @@ import Lightbox from "@/components/Lightbox";
 import HistorySidebar from "@/components/HistorySidebar";
 import { formatTime } from "@/lib/format";
 import { emitCreditsDeduct, emitCreditsRefresh } from "@/lib/events";
-import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry } from "@/lib/types";
-
-/* ── Local types ── */
-type ReferenceImage = {
-  name: string;
-  dataUrl: string;
-  thumbnail: string;
-  mediaType: string;
-  size: number;
-  width: number;
-  height: number;
-};
-type ToastType = "success" | "error" | "warning";
+import type { AspectRatio, Quality, ProviderChoice, AIEngine, ImageResult, HistoryEntry, VersionEntry, ReferenceImage, ToastType } from "@/lib/types";
 
 /* ── Constants ── */
 const ASPECT_OPTIONS: { label: string; value: AspectRatio; size: string; icon: string; rotate?: number }[] = [
@@ -495,7 +483,6 @@ function savePrompts(prompts: string[]) {
 }
 
 
-/* ── (styles moved to globals.css: .overlay-btn, .lightbox-btn-action, .lightbox-nav, .action-btn) ── */
 
 /* ── Main Component ── */
 export default function HomePage() {
@@ -666,6 +653,13 @@ export default function HomePage() {
     () => aspect === "auto" ? inferSmartAspect(prompt, referenceImages[0] ?? null) : null,
     [aspect, prompt, referenceImages]
   );
+
+  // 只有在 auto 模式下且不是"默认 1:1 fallback"时才显示推断标签
+  const showSmartInference = useMemo(() => {
+    if (aspect !== "auto" || !smartInference) return false;
+    if (smartInference.aspect === "1:1" && referenceImages.length === 0 && !prompt.trim()) return false;
+    return true;
+  }, [aspect, smartInference, referenceImages.length, prompt]);
 
   const generationEta = useMemo(() => estimateEtaSeconds({
     engine: aiEngine,
@@ -849,8 +843,11 @@ export default function HomePage() {
         }
       }
       if (res.status === 402) {
-        // Fetch current credits to show in modal
-        fetch("/api/credits").then(r => r.json()).then(d => setCurrentCredits(d.credits_remaining ?? 0)).catch(() => {});
+        // Fetch current credits to show in modal（mountedRef 守卫避免组件卸载后 setState）
+        fetch("/api/credits")
+          .then(r => r.json())
+          .then(d => { if (mountedRef.current) setCurrentCredits(d.credits_remaining ?? 0); })
+          .catch(() => {});
         emitCreditsRefresh();
         setShowPaymentModal(true);
         return;
@@ -1280,14 +1277,9 @@ export default function HomePage() {
                     value={prompt}
                     onChange={e => setPrompt(e.target.value)}
                     onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleGenerate(); }}
-                    onFocus={e => {
-                      e.target.style.borderColor = "var(--border-focus)";
-                      if (recentPrompts.length > 0) setShowPromptHistory(true);
-                    }}
-                    onBlur={e => {
-                      e.target.style.borderColor = "var(--border)";
-                      // dropdown 内的 mousedown 已经 preventDefault 阻止失焦
-                      // 这里关闭只在点击 dropdown 外（含下方按钮）时触发
+                    onFocus={() => { if (recentPrompts.length > 0) setShowPromptHistory(true); }}
+                    onBlur={() => {
+                      // dropdown 内的 mousedown 已 preventDefault 阻止失焦；此处只在点击外部时关闭
                       setShowPromptHistory(false);
                     }}
                     placeholder="描述你想生成的图像..."
@@ -1396,6 +1388,8 @@ export default function HomePage() {
                         src={ref.thumbnail}
                         alt={ref.name}
                         title={`${ref.name} · ${formatFileSize(ref.size)}`}
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
                       <button
@@ -1464,14 +1458,11 @@ export default function HomePage() {
                   <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
                 ) : (
                   <>
-                    {aspect === "auto" && smartInference && (() => {
-                      const isDefault = smartInference.aspect === "1:1" && referenceImages.length === 0 && !prompt.trim();
-                      return !isDefault ? (
-                        <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
-                          → {smartInference.label}
-                        </span>
-                      ) : null;
-                    })()}
+                    {showSmartInference && smartInference && (
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)", letterSpacing: "0.03em" }}>
+                        → {smartInference.label}
+                      </span>
+                    )}
                     <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
                       {ASPECT_OPTIONS.map(opt => {
                         const active = aspect === opt.value;
@@ -1655,7 +1646,7 @@ export default function HomePage() {
           {/* Loading skeleton */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}>
-              <div className="img-grid-loading" style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? 620 : 400 }}>
+              <div className="img-grid-loading" style={{ display: "grid", gridTemplateColumns: count > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: count > 1 ? "min(620px, 100%)" : "min(400px, 100%)" }}>
                 {Array.from({ length: count }).map((_, i) => (
                   <GeneratingCard
                     key={i}
@@ -1703,7 +1694,7 @@ export default function HomePage() {
             <>
               <div
                 className="img-grid"
-                style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? 620 : 400 }}
+                style={{ display: "grid", gridTemplateColumns: images.length > 1 ? "repeat(2, 1fr)" : "1fr", gap: 14, width: "100%", maxWidth: images.length > 1 ? "min(620px, 100%)" : "min(400px, 100%)" }}
               >
                 {images.map((img, i) => {
                   const src = imageSrc(img);
@@ -1775,7 +1766,7 @@ export default function HomePage() {
                 <section style={{ width: "100%", maxWidth: 620, display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <SideLabel icon="ri-stack-line">版本</SideLabel>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{versions.length}/12</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>{versions.length}/{MAX_HISTORY}</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))", gap: 8 }}>
                     {versions.slice(0, 6).map(version => {
@@ -1802,7 +1793,7 @@ export default function HomePage() {
                         >
                           {version.thumbnail ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={version.thumbnail} alt="" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+                            <img src={version.thumbnail} alt="" loading="lazy" decoding="async" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
                           ) : (
                             <div style={{ width: 34, height: 34, borderRadius: 6, flexShrink: 0, background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                               <i className="ri-image-line" style={{ fontSize: 16, lineHeight: 1, color: "var(--text-muted)" }} />
@@ -2009,7 +2000,7 @@ export default function HomePage() {
                 {referenceImages.map((ref, idx) => (
                   <div key={`${ref.name}-${idx}`} style={{ position: "relative", aspectRatio: "1 / 1", borderRadius: 7, overflow: "hidden", border: "1px solid var(--border)", background: "var(--surface-2)" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={ref.thumbnail} alt={ref.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                    <img src={ref.thumbnail} alt={ref.name} loading="lazy" decoding="async" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                     <button type="button" onClick={() => removeReferenceImage(idx)} aria-label="移除"
                       style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.65)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <i className="ri-close-line" style={{ fontSize: 12, lineHeight: 1 }} />
@@ -2033,14 +2024,11 @@ export default function HomePage() {
               <GeminiAspectGrid value={geminiAspect} onChange={setGeminiAspect} />
             ) : (
               <>
-                {aspect === "auto" && smartInference && (() => {
-                  const isDefault = smartInference.aspect === "1:1" && referenceImages.length === 0 && !prompt.trim();
-                  return !isDefault ? (
-                    <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
-                      → {smartInference.label}
-                    </span>
-                  ) : null;
-                })()}
+                {showSmartInference && smartInference && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "var(--font-space)" }}>
+                    → {smartInference.label}
+                  </span>
+                )}
                 <div className="ck-option-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
                   {ASPECT_OPTIONS.map(opt => {
                     const active = aspect === opt.value;

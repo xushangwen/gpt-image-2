@@ -71,8 +71,7 @@ const UPSTREAM_TIMEOUT_MS = 270_000;
 // 本项目只用 gpt-image-2。按 OpenAI 官方支持 low/medium/high/auto。
 const QUALITY_SUPPORTED_MODELS = new Set(["gpt-image-2"]);
 // 生图请求一旦发到上游，服务端 Abort/超时不保证能取消上游后台任务。
-// 自动重试会造成“前端失败，但上游继续出图并重复扣费”，所以这里禁止自动重试。
-const MAX_GENERATE_ATTEMPTS = 1;
+// 自动重试会造成"前端失败，但上游继续出图并重复扣费"，所以始终单次调用。
 
 function getProvider(): ProviderName {
   const provider = (process.env.IMAGE_PROVIDER ?? "tuzi").trim().toLowerCase();
@@ -532,48 +531,19 @@ async function fetchUpstream(
   return rawText;
 }
 
-// 按 MAX_GENERATE_ATTEMPTS 限制上游调用次数；当前为 1，即失败不自动补发第二单。
-async function withRetry<T>(
-  provider: ProviderName,
-  baseConfig: GenerateConfig,
-  task: (config: GenerateConfig) => Promise<T>
-): Promise<T> {
-  let lastErr: unknown;
-  for (let attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
-    // 如果未来明确允许重试，后续尝试会换 key；默认不会走到第二次。
-    const config = attempt === 1 ? baseConfig : { ...baseConfig, apiKey: pickApiKey(provider) ?? baseConfig.apiKey };
-    try {
-      return await task(config);
-    } catch (err) {
-      lastErr = err;
-      if (err instanceof UpstreamError) {
-        if (!err.retriable) throw err;
-        if (attempt >= MAX_GENERATE_ATTEMPTS) throw err;
-        console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed (${err.kind}), retrying...`);
-      } else {
-        if (attempt >= MAX_GENERATE_ATTEMPTS) throw err;
-        console.warn(`[generate] attempt ${attempt}/${MAX_GENERATE_ATTEMPTS} failed:`, err);
-      }
-    }
-  }
-  throw lastErr;
-}
-
-// 单次请求，兼容不支持 n>1 的中转服务。失败时换 key 重试一次。
+// 单次上游请求。当前不自动重试（上游 abort 不保证取消任务，重试会导致中转商二次扣费）
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
-  return withRetry(config.provider, config, async (cfg) => {
-    const rawText = await fetchUpstream(
-      cfg.apiEndpoint,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-        body: JSON.stringify(body),
-      },
-      "图像生成请求"
-    );
-    logUpstreamMeta(rawText, `${cfg.provider}:gen:${cfg.model}`);
-    return parseImageResponse(rawText);
-  });
+  const rawText = await fetchUpstream(
+    config.apiEndpoint,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify(body),
+    },
+    "图像生成请求"
+  );
+  logUpstreamMeta(rawText, `${config.provider}:gen:${config.model}`);
+  return parseImageResponse(rawText);
 }
 
 async function editOneViaGenerationsEndpoint(
@@ -607,19 +577,17 @@ async function editOneViaGenerationsEndpoint(
     if (resolvedQuality) body.quality = resolvedQuality;
   }
 
-  return withRetry(config.provider, config, async (cfg) => {
-    const rawText = await fetchUpstream(
-      cfg.referenceEndpoint,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-        body: JSON.stringify(body),
-      },
-      "参考图生成请求"
-    );
-    logUpstreamMeta(rawText, `${cfg.provider}:edit-gen:${cfg.referenceModel}`);
-    return parseImageResponse(rawText);
-  });
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify(body),
+    },
+    "参考图生成请求"
+  );
+  logUpstreamMeta(rawText, `${config.provider}:edit-gen:${config.referenceModel}`);
+  return parseImageResponse(rawText);
 }
 
 async function editOneViaImagesEndpoint(
@@ -659,19 +627,17 @@ async function editOneViaImagesEndpoint(
     formData.append(fieldKey, file);
   }
 
-  return withRetry(config.provider, config, async (cfg) => {
-    const rawText = await fetchUpstream(
-      cfg.referenceEndpoint,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${cfg.apiKey}` },
-        body: formData,
-      },
-      "参考图生成请求"
-    );
-    logUpstreamMeta(rawText, `${cfg.provider}:edit-multipart:${cfg.referenceModel}`);
-    return parseImageResponse(rawText);
-  });
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      body: formData,
+    },
+    "参考图生成请求"
+  );
+  logUpstreamMeta(rawText, `${config.provider}:edit-multipart:${config.referenceModel}`);
+  return parseImageResponse(rawText);
 }
 
 async function editOneViaChatEndpoint(
@@ -685,35 +651,33 @@ async function editOneViaChatEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  return withRetry(config.provider, config, async (cfg) => {
-    const rawText = await fetchUpstream(
-      cfg.referenceEndpoint,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-        body: JSON.stringify({
-          model: cfg.referenceModel,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
-                // 多图：逐张 append 为 image_url part
-                ...referenceImages.map(ref => ({
-                  type: "image_url" as const,
-                  image_url: { url: referenceImageToDataUrl(ref) },
-                })),
-              ],
-            },
-          ],
-          max_tokens: 4096,
-        }),
-      },
-      "参考图生成请求"
-    );
-    logUpstreamMeta(rawText, `${cfg.provider}:edit-chat:${cfg.referenceModel}`);
-    return parseChatImageResponse(rawText);
-  });
+  const rawText = await fetchUpstream(
+    config.referenceEndpoint,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify({
+        model: config.referenceModel,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: buildReferenceChatPrompt(prompt, size, quality) },
+              // 多图：逐张 append 为 image_url part
+              ...referenceImages.map(ref => ({
+                type: "image_url" as const,
+                image_url: { url: referenceImageToDataUrl(ref) },
+              })),
+            ],
+          },
+        ],
+        max_tokens: 4096,
+      }),
+    },
+    "参考图生成请求"
+  );
+  logUpstreamMeta(rawText, `${config.provider}:edit-chat:${config.referenceModel}`);
+  return parseChatImageResponse(rawText);
 }
 
 function generateWithReference(
