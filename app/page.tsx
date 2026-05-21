@@ -11,7 +11,7 @@ import AppHeader from "@/components/AppHeader";
 import { PROVIDER_LABELS, PROVIDER_STABILITY, stabilityColor } from "@/lib/providers";
 import { formatTime } from "@/lib/format";
 import { emitCreditsDeduct, emitCreditsRefresh } from "@/lib/events";
-import { computeTotalCost } from "@/lib/pricing";
+import { computeCreditCost } from "@/lib/pricing";
 import PricingChangeModal from "@/components/PricingChangeModal";
 import {
   imageSrc,
@@ -413,11 +413,8 @@ export default function HomePage() {
   }), [aiEngine, quality, geminiQuality, aspect, geminiAspect, count, referenceImages.length]);
 
   const effectiveQuality = aiEngine === "gemini" ? geminiQuality : quality;
-  const totalCost = useMemo(
-    () => computeTotalCost(aiEngine, effectiveQuality, count),
-    [aiEngine, effectiveQuality, count]
-  );
-  const costPerImage = count > 0 ? totalCost / count : totalCost;
+  const costPerImage = computeCreditCost(aiEngine, effectiveQuality);
+  const totalCost = costPerImage * count;
 
   const handleReferenceUpload = useCallback(async (files: FileList | File[] | undefined) => {
     if (!files || files.length === 0) return;
@@ -653,7 +650,7 @@ export default function HomePage() {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       generatingRef.current = false;
     }
-  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, totalCost, showToast, smartInference]);
+  }, [prompt, quality, geminiQuality, count, aspect, geminiAspect, referenceImages, provider, aiEngine, showToast, smartInference]);
 
   /* Global ⌘Enter / Ctrl+Enter shortcut — works regardless of focus.
      用 ref 持有最新 handleGenerate + lightboxIdx，effect 一次性绑定，

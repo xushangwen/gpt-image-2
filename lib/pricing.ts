@@ -20,9 +20,8 @@ export function computeCreditCost(engine: AIEngine, quality: Quality): number {
   return quality === "high" ? 2 : 1;
 }
 
-/** 一次请求总消耗 = 单张积分 × 张数 */
 export function computeTotalCost(engine: AIEngine, quality: Quality, count: number): number {
-  return computeCreditCost(engine, quality) * Math.max(1, count);
+  return computeCreditCost(engine, quality) * count;
 }
 
 export interface PricingRow {
