@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { fetchSafeUrl, UrlSafetyError } from "@/lib/url-safety";
 import { HttpError } from "@/lib/errors";
 import { computeCreditCost } from "@/lib/pricing";
+import { pickKey, markKeyFailed, getKeyCount } from "@/lib/api-keys";
 import type { Quality } from "@/lib/types";
 
 export const maxDuration = 300;
@@ -16,7 +17,6 @@ type ReferenceEndpointKind = "chat-completions" | "images-edits" | "images-gener
 type SizeFormat = "pixel" | "ratio";
 type GenerateConfig = {
   provider: ProviderName;
-  apiKey: string;
   apiEndpoint: string;
   referenceEndpoint: string;
   referenceEndpointKind: ReferenceEndpointKind | null;
@@ -90,19 +90,15 @@ function getProviderEnv(provider: ProviderName, suffix: string) {
   return process.env[providerEnvName(provider, suffix)]?.trim();
 }
 
-// 支持逗号 / 空白分隔多 key，随机挑一个。serverless 无共享状态，随机比轮询更稳。
+function getRawApiKey(provider: ProviderName): string | undefined {
+  return provider === "custom"
+    ? process.env.IMAGE_API_KEY?.trim()
+    : getProviderEnv(provider, "API_KEY");
+}
+
+// 多 key 轮询 + 失败冷却。每次上游调用都重新挑，count>1 时多个并发请求会分散到不同 key
 function pickApiKey(provider: ProviderName): string | undefined {
-  const raw =
-    provider === "custom"
-      ? process.env.IMAGE_API_KEY?.trim()
-      : getProviderEnv(provider, "API_KEY");
-  if (!raw) return undefined;
-  const keys = raw.split(/[,\s]+/).map((k) => k.trim()).filter(Boolean);
-  if (keys.length === 0) return undefined;
-  if (keys.length === 1) return keys[0];
-  const picked = keys[Math.floor(Math.random() * keys.length)];
-  console.log(`[generate] ${provider} 使用 key ...${picked.slice(-4)}（共 ${keys.length} 个）`);
-  return picked;
+  return pickKey({ namespace: `gen:${provider}`, raw: getRawApiKey(provider) });
 }
 
 function getEndpointKind(endpoint: string): ReferenceEndpointKind {
@@ -125,7 +121,8 @@ function getSizeFormat(provider: ProviderName, preset: typeof PROVIDER_PRESETS.t
 function getConfig(providerOverride?: ProviderName): GenerateConfig {
   const provider = providerOverride ?? getProvider();
   const preset = provider === "custom" ? null : PROVIDER_PRESETS[provider];
-  const apiKey = pickApiKey(provider);
+  // 验证至少有一把 key，但不在这里选——选 key 推迟到每次上游调用以支持轮询
+  const rawKey = getRawApiKey(provider);
   const apiEndpoint = getProviderEnv(provider, "API_ENDPOINT") || preset?.apiEndpoint || process.env.IMAGE_API_ENDPOINT?.trim();
   const configuredReferenceEndpoint =
     getProviderEnv(provider, "REFERENCE_ENDPOINT") ||
@@ -146,7 +143,7 @@ function getConfig(providerOverride?: ProviderName): GenerateConfig {
     "";
   const sizeFormat = getSizeFormat(provider, preset);
 
-  if (!apiKey || !apiEndpoint || !model || !referenceModel) {
+  if (!rawKey || !apiEndpoint || !model || !referenceModel) {
     throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
   }
 
@@ -162,7 +159,6 @@ function getConfig(providerOverride?: ProviderName): GenerateConfig {
     if (!referenceEndpoint) {
       return {
         provider,
-        apiKey,
         apiEndpoint: endpointUrl.href,
         referenceEndpoint: "",
         referenceEndpointKind: null,
@@ -176,7 +172,6 @@ function getConfig(providerOverride?: ProviderName): GenerateConfig {
     const referenceUrl = new URL(referenceEndpoint);
     return {
       provider,
-      apiKey,
       apiEndpoint: endpointUrl.href,
       referenceEndpoint: referenceUrl.href,
       referenceEndpointKind: getEndpointKind(referenceUrl.href),
@@ -533,13 +528,57 @@ async function fetchUpstream(
   return rawText;
 }
 
+// 各类上游错误对应的 key 冷却时长（毫秒）。0 表示不冷却（与 key 无关的错误）
+function cooldownForKind(kind: UpstreamErrorKind): number {
+  switch (kind) {
+    case "rate_limit":      return 30_000;
+    case "quota_exhausted": return 120_000;
+    case "server_5xx":      return 15_000;
+    case "timeout":         return 20_000;
+    case "network":         return 10_000;
+    case "auth_failed":     return 300_000;  // key 失效，长冷却
+    default:                return 0;
+  }
+}
+
+// 上游请求 + 自动 key 轮询 + 失败冷却
+async function fetchUpstreamWithKey(
+  provider: ProviderName,
+  url: string,
+  init: Omit<RequestInit, "signal" | "headers"> & { headers?: Record<string, string> },
+  timeoutLabel: string
+): Promise<string> {
+  const apiKey = pickApiKey(provider);
+  if (!apiKey) {
+    throw new HttpError("服务端图像生成配置缺失，请检查环境变量", 500);
+  }
+  const headers = { ...(init.headers ?? {}), Authorization: `Bearer ${apiKey}` };
+  const keyCount = getKeyCount(getRawApiKey(provider));
+  if (keyCount > 1) {
+    console.log(`[generate] ${provider} 使用 key ...${apiKey.slice(-4)}（共 ${keyCount} 个，轮询）`);
+  }
+  try {
+    return await fetchUpstream(url, { ...init, headers }, timeoutLabel);
+  } catch (err) {
+    if (err instanceof UpstreamError) {
+      const cooldown = cooldownForKind(err.kind);
+      if (cooldown > 0) {
+        markKeyFailed(`gen:${provider}`, apiKey, cooldown);
+        console.warn(`[generate] ${provider} key ...${apiKey.slice(-4)} 冷却 ${cooldown}ms（${err.kind}）`);
+      }
+    }
+    throw err;
+  }
+}
+
 // 单次上游请求。当前不自动重试（上游 abort 不保证取消任务，重试会导致中转商二次扣费）
 async function generateOne(body: object, config: GenerateConfig): Promise<ImageResult> {
-  const rawText = await fetchUpstream(
+  const rawText = await fetchUpstreamWithKey(
+    config.provider,
     config.apiEndpoint,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
     "图像生成请求"
@@ -579,11 +618,12 @@ async function editOneViaGenerationsEndpoint(
     if (resolvedQuality) body.quality = resolvedQuality;
   }
 
-  const rawText = await fetchUpstream(
+  const rawText = await fetchUpstreamWithKey(
+    config.provider,
     config.referenceEndpoint,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     },
     "参考图生成请求"
@@ -629,11 +669,11 @@ async function editOneViaImagesEndpoint(
     formData.append(fieldKey, file);
   }
 
-  const rawText = await fetchUpstream(
+  const rawText = await fetchUpstreamWithKey(
+    config.provider,
     config.referenceEndpoint,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${config.apiKey}` },
       body: formData,
     },
     "参考图生成请求"
@@ -653,11 +693,12 @@ async function editOneViaChatEndpoint(
     throw new HttpError("参考图生成接口未配置，请设置 IMAGE_REFERENCE_ENDPOINT 后再使用参考图", 500);
   }
 
-  const rawText = await fetchUpstream(
+  const rawText = await fetchUpstreamWithKey(
+    config.provider,
     config.referenceEndpoint,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: config.referenceModel,
         messages: [

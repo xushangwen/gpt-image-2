@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { getOrCreateCredits, getCreditsOnly, deductCredits, refundCredits } from "@/lib/credits";
+import { acquireGenerationLock, releaseGenerationLock } from "@/lib/locks";
 import { HttpError } from "@/lib/errors";
 import { computeCreditCost } from "@/lib/pricing";
+import { pickKey, markKeyFailed, getKeyCount } from "@/lib/api-keys";
 import type { Quality } from "@/lib/types";
 
 export const maxDuration = 300;
@@ -11,24 +13,39 @@ export const preferredRegion = "iad1";
 // 走 yunwu 中转商，兼容 Google 原生 generateContent 协议
 // 旧 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"（Google 直连，已不用）
 const GEMINI_API_BASE = (process.env.GEMINI_API_BASE?.trim() || "https://yunwu.ai/v1beta");
-const UPSTREAM_TIMEOUT_MS = 180_000;
+// 与 OpenAI 路由对齐：Gemini 4K + 多参考图也常见 3 分钟级别，180s 阈值会误杀真实仍在跑的请求
+const UPSTREAM_TIMEOUT_MS = 270_000;
 const ALLOWED_QUALITIES = new Set(["auto", "low", "medium", "high"]);
 const ALLOWED_SIZES = new Set(["1024x1024", "1536x1024", "1024x1536"]);
 const ALLOWED_REFERENCE_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
 const MAX_PROMPT_LENGTH = 4000;
 const MAX_REFERENCE_BYTES = 10 * 1024 * 1024;
+const MAX_REFERENCE_IMAGES = 4;
 
-// 支持逗号 / 空白分隔多 key，随机挑一个（serverless 无共享状态，随机比轮询更稳）
-// 优先 YUNWU_GEMINI_API_KEY（yunwu 中转的 sk-...）；向后兼容 GEMINI_API_KEY（旧 Google 直连）
+// 多 key 轮询 + 失败冷却。优先 YUNWU_GEMINI_API_KEY，向后兼容 GEMINI_API_KEY（旧 Google 直连）
+function getRawApiKey(): string | undefined {
+  return (process.env.YUNWU_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? "").trim() || undefined;
+}
+
 function pickApiKey(): string {
-  const raw = (process.env.YUNWU_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? "").trim();
+  const raw = getRawApiKey();
   if (!raw) throw new HttpError("YUNWU_GEMINI_API_KEY 未配置，请在 .env.local 中添加", 500);
-  const keys = raw.split(/[,\s]+/).map((k) => k.trim()).filter(Boolean);
-  if (keys.length === 0) throw new HttpError("YUNWU_GEMINI_API_KEY 配置无效", 500);
-  if (keys.length === 1) return keys[0];
-  const picked = keys[Math.floor(Math.random() * keys.length)];
-  console.log(`[gemini/generate] 使用 key ...${picked.slice(-4)}（共 ${keys.length} 个）`);
+  const picked = pickKey({ namespace: "gen:gemini", raw });
+  if (!picked) throw new HttpError("YUNWU_GEMINI_API_KEY 配置无效", 500);
+  const keyCount = getKeyCount(raw);
+  if (keyCount > 1) {
+    console.log(`[gemini/generate] 使用 key ...${picked.slice(-4)}（共 ${keyCount} 个，轮询）`);
+  }
   return picked;
+}
+
+// 上游错误对应的 key 冷却时长（毫秒）
+function cooldownForStatus(status: number, isTimeout: boolean): number {
+  if (isTimeout) return 20_000;
+  if (status === 429) return 30_000;
+  if (status === 401 || status === 403) return 300_000;
+  if (status >= 500) return 15_000;
+  return 0;
 }
 
 function getModel(): string {
@@ -79,20 +96,18 @@ interface GeminiResponse {
 
 async function callGemini(
   model: string,
-  apiKey: string,
   prompt: string,
   aspectRatio: string,
   quality: string,
-  referenceImage?: { data: string; mediaType: string }
+  referenceImages: { data: string; mediaType: string }[] = []
 ): Promise<{ b64: string; mediaType: string }> {
-  // 官方文档要求：文字在前，图片在后
-  const parts: GeminiPart[] = [];
-  parts.push({ text: prompt });
-  if (referenceImage) {
+  // 官方文档要求：文字在前，图片在后。多图按顺序 push，模型按位置语义识别（"图一/图二"）
+  const parts: GeminiPart[] = [{ text: prompt }];
+  for (const ref of referenceImages) {
     parts.push({
       inlineData: {
-        mimeType: normalizeMediaType(referenceImage.mediaType),
-        data: referenceImage.data,
+        mimeType: normalizeMediaType(ref.mediaType),
+        data: ref.data,
       },
     });
   }
@@ -100,7 +115,7 @@ async function callGemini(
   const imageSize = QUALITY_TO_IMAGE_SIZE[quality] ?? "1K";
 
   // 垫图模式：不传 aspectRatio，避免与参考图构图冲突；仅传 imageSize 控制分辨率
-  const imageConfig = referenceImage
+  const imageConfig = referenceImages.length > 0
     ? { imageSize }
     : { aspectRatio, imageSize };
 
@@ -112,6 +127,8 @@ async function callGemini(
     },
   };
 
+  // 每次调用独立挑 key（count>1 并发时分散到不同 key），失败自动冷却
+  const apiKey = pickApiKey();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   const startedAt = Date.now();
@@ -132,19 +149,26 @@ async function callGemini(
     );
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
+      markKeyFailed("gen:gemini", apiKey, cooldownForStatus(0, true));
       throw new HttpError("生成超时，请稍后重试（积分已自动退还）", 504);
     }
+    markKeyFailed("gen:gemini", apiKey, 10_000);
     throw new HttpError("网络异常，请检查连接后重试", 502);
   } finally {
     clearTimeout(timeoutId);
   }
 
   const rawText = await response.text();
-  console.info("[gemini/generate] upstream status:", response.status, `elapsed=${Date.now() - startedAt}ms`);
+  console.info("[gemini/generate] upstream status:", response.status, `elapsed=${Date.now() - startedAt}ms refs=${referenceImages.length}`);
 
   // 上游 4xx/5xx：原始 error.message 进日志，不暴露给前端（避免泄漏 API key / 配额提示等内部信息）
   if (!response.ok) {
     console.error(`[gemini/generate] upstream ${response.status}: ${rawText.slice(0, 200)}`);
+    const cd = cooldownForStatus(response.status, false);
+    if (cd > 0) {
+      markKeyFailed("gen:gemini", apiKey, cd);
+      console.warn(`[gemini/generate] key ...${apiKey.slice(-4)} 冷却 ${cd}ms（status=${response.status}）`);
+    }
     if (response.status === 401 || response.status === 403) {
       throw new HttpError("服务配置异常，请联系管理员", 502);
     }
@@ -214,7 +238,26 @@ async function callGemini(
 }
 
 export async function POST(req: NextRequest) {
+  const reqStart = Date.now();
+  const traceId = Math.random().toString(36).slice(2, 8);
+  let acquiredUserId: string | null = null;
   try {
+    const { userId } = await auth();
+    if (!userId) throw new HttpError("请先登录", 401);
+
+    // 同一用户并发拦截。与 OpenAI 路由对齐：
+    // 防止用户在前端 abort + 重新点击时，旧请求仍在跑 → 同一用户两次上游计费
+    const lockResult = await acquireGenerationLock(userId);
+    if (lockResult === "held") {
+      console.warn(`[gemini/generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=lock_held`);
+      throw new HttpError("已有生图任务进行中，请等待完成（如果你刚才取消过页面，请稍等 5 分钟自动释放）", 429);
+    }
+    if (lockResult === "error") {
+      console.warn(`[gemini/generate ${traceId}] REJECTED user=${userId.slice(-8)} reason=lock_db_error`);
+      throw new HttpError("系统繁忙，请稍后重试", 503);
+    }
+    acquiredUserId = userId;
+
     let raw: {
       prompt?: unknown;
       size?: unknown;
@@ -222,6 +265,7 @@ export async function POST(req: NextRequest) {
       n?: unknown;
       aspectRatio?: unknown;
       referenceImage?: { data?: string; mediaType?: string; name?: string };
+      referenceImages?: Array<{ data?: string; mediaType?: string; name?: string }>;
     };
     try {
       raw = await req.json();
@@ -229,7 +273,7 @@ export async function POST(req: NextRequest) {
       throw new HttpError("请求体不是有效的 JSON", 400);
     }
 
-    const { prompt, size = "1024x1024", quality = "high", n = 1, aspectRatio, referenceImage } = raw;
+    const { prompt, size = "1024x1024", quality = "high", n = 1, aspectRatio, referenceImage, referenceImages } = raw;
 
     if (typeof prompt !== "string" || !prompt.trim()) {
       throw new HttpError("Prompt is required", 400);
@@ -246,25 +290,32 @@ export async function POST(req: NextRequest) {
     }
     const sizeStr = size;
 
-    let parsedRef: { data: string; mediaType: string } | undefined;
-    if (
-      referenceImage &&
-      typeof referenceImage.data === "string" &&
-      typeof referenceImage.mediaType === "string"
-    ) {
-      if (!ALLOWED_REFERENCE_TYPES.has(referenceImage.mediaType)) {
+    // 多图垫图：优先取 referenceImages 数组；向后兼容旧 referenceImage 单图字段
+    const rawRefs: Array<{ data?: string; mediaType?: string; name?: string }> =
+      Array.isArray(referenceImages) && referenceImages.length > 0
+        ? referenceImages
+        : (referenceImage ? [referenceImage] : []);
+
+    if (rawRefs.length > MAX_REFERENCE_IMAGES) {
+      throw new HttpError(`最多支持 ${MAX_REFERENCE_IMAGES} 张参考图`, 400);
+    }
+
+    const parsedRefs: { data: string; mediaType: string }[] = [];
+    for (const ref of rawRefs) {
+      if (!ref || typeof ref.data !== "string" || typeof ref.mediaType !== "string") {
+        throw new HttpError("参考图数据格式无效", 400);
+      }
+      if (!ALLOWED_REFERENCE_TYPES.has(ref.mediaType)) {
         throw new HttpError("参考图仅支持 PNG、JPG 或 WebP", 400);
       }
-      const byteLength = Math.floor(referenceImage.data.length * 0.75);
+      const byteLength = Math.floor(ref.data.length * 0.75);
       if (byteLength > MAX_REFERENCE_BYTES) {
-        throw new HttpError("参考图不能超过 10 MB", 400);
+        throw new HttpError("单张参考图不能超过 10 MB", 400);
       }
-      parsedRef = { data: referenceImage.data, mediaType: referenceImage.mediaType };
+      parsedRefs.push({ data: ref.data, mediaType: ref.mediaType });
     }
 
     // ── 积分验证 ──
-    const { userId } = await auth();
-    if (!userId) throw new HttpError("请先登录", 401);
 
     let creditsRemaining = await getCreditsOnly(userId);
     if (creditsRemaining === null) {
@@ -292,7 +343,6 @@ export async function POST(req: NextRequest) {
       throw new HttpError("积分不足，请购买套餐", 402);
     }
 
-    const apiKey = pickApiKey();
     const model = getModel();
     // aspectRatio from payload takes priority; fall back to pixel-size conversion
     const resolvedAspect =
@@ -300,9 +350,9 @@ export async function POST(req: NextRequest) {
         ? aspectRatio
         : (PIXEL_SIZE_TO_ASPECT[sizeStr] ?? "1:1");
 
-    const startedAt = Date.now();
     console.info(
-      "[gemini/generate] request:",
+      `[gemini/generate ${traceId}] START`,
+      `user=${userId.slice(-8)}`,
       `count=${count}`,
       `cost/img=${costPerImage}`,
       `total=${totalCost}`,
@@ -311,13 +361,13 @@ export async function POST(req: NextRequest) {
       `quality=${quality}`,
       `imageSize=${QUALITY_TO_IMAGE_SIZE[quality]}`,
       `aspectRatio=${resolvedAspect}`,
-      `reference=${parsedRef ? "yes" : "no"}`,
+      `refs=${parsedRefs.length}`,
       `model=${model}`
     );
 
     const results = await Promise.allSettled(
       Array.from({ length: count }, () =>
-        callGemini(model, apiKey, prompt.trim(), resolvedAspect, quality, parsedRef)
+        callGemini(model, prompt.trim(), resolvedAspect, quality, parsedRefs)
       )
     );
 
@@ -330,10 +380,10 @@ export async function POST(req: NextRequest) {
 
     const failures = results.filter(r => r.status === "rejected");
     console.info(
-      "[gemini/generate] completed:",
+      `[gemini/generate ${traceId}] completed`,
       `ok=${images.length}`,
       `failed=${failures.length}`,
-      `elapsed=${Date.now() - startedAt}ms`
+      `elapsed=${Date.now() - reqStart}ms`
     );
 
     if (images.length === 0) {
@@ -385,5 +435,9 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[gemini/generate] failed:", message);
     return NextResponse.json({ error: message }, { status });
+  } finally {
+    if (acquiredUserId) {
+      await releaseGenerationLock(acquiredUserId);
+    }
   }
 }
